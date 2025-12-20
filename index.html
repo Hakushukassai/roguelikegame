@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.6.1: Balanced</title>
+    <title>Evo Lite v2.7.0: Guardian</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -100,7 +100,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.6.1 BALANCED</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.7.0 GUARDIAN</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -241,6 +241,10 @@ let earthquakeTimer = 0;
 let electroFenceTimer = 0; 
 let singularityMode = false;
 
+// ★ Guardian: Sentry System
+let sentries = [];
+let sentryTimer = 0;
+
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
     hp: 100, maxHp: 100,
@@ -264,6 +268,11 @@ let stats = {
     splitShot: false, giantSlayer: false,
     armor: 0, 
     knockback: 0, shrapnel: false, 
+    
+    // Guardian Skills
+    sentrySystem: false, siegeMode: false, reactiveArmor: false, 
+    nanoRepair: false, clusterMine: false, forceField: false,
+    forceFieldCd: 0, isStationary: false,
     
     // Forbidden Skills
     shotExplode: false, shotBounce: false, doubleShot: false, 
@@ -391,6 +400,42 @@ function update(ts) {
     if(player.invincible > 0) player.invincible -= ts;
     if(player.slamCd > 0) player.slamCd -= ts;
     if(screenShake > 0) screenShake *= 0.9;
+    
+    // Guardian Skills Update
+    if(stats.sentrySystem) {
+        sentryTimer -= ts;
+        if(sentryTimer <= 0) {
+            spawnSentry();
+            sentryTimer = 600; // 10 seconds
+        }
+        sentries.forEach(s => {
+            s.cooldown -= ts;
+            if(s.cooldown <= 0) {
+                // Sentry Shoot
+                let target = null;
+                let minD = 400;
+                enemies.forEach(e => {
+                    if(e.dead) return;
+                    let d = Math.hypot(e.x - s.x, e.y - s.y);
+                    if(d < minD) { minD = d; target = e; }
+                });
+                if(target) {
+                    let ang = Math.atan2(target.y - s.y, target.x - s.x);
+                    bullets.push({type:'normal', x:s.x, y:s.y, vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, size:6, color:'#0f0', hit:[], pierce:stats.pierce});
+                    Sound.play('shoot', 1.5);
+                    s.cooldown = stats.rate;
+                }
+            }
+        });
+    }
+
+    if(stats.forceField) {
+        if(stats.forceFieldCd > 0) stats.forceFieldCd -= ts;
+    }
+
+    if(stats.nanoRepair && player.hp < player.maxHp * 0.3) {
+        player.hp = Math.min(player.maxHp, player.hp + (50/60)*ts);
+    }
 
     // --- Special Skills Logic ---
     if(stats.omegaLaser) {
@@ -461,7 +506,11 @@ function update(ts) {
         if(len > 1) { dx/=len; dy/=len; }
         player.x += dx * stats.spd * ts;
         player.y += dy * stats.spd * ts;
+        stats.isStationary = false;
+    } else {
+        stats.isStationary = true;
     }
+
     player.x = Math.max(15, Math.min(canvas.width-15, player.x));
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
 
@@ -575,7 +624,11 @@ function update(ts) {
         });
     }
 
-    if(!stats.aura && Math.random() < (1/stats.rate)*ts) {
+    // Guardian Siege Mode Logic
+    let currentRate = stats.rate;
+    if(stats.siegeMode && stats.isStationary) currentRate /= 2;
+
+    if(!stats.aura && Math.random() < (1/currentRate)*ts) {
         shoot();
         if(stats.chakram > 0 && Math.random() < 0.3) fireChakram();
     }
@@ -660,7 +713,6 @@ function update(ts) {
             if(Math.random() < 0.5 * ts && particles.length < MAX_PARTICLES) createParticles(b.x, b.y, b.type==='spirit'?'#8f8':'#f80', 1, 2);
         } else {
             b.x += b.vx * ts; b.y += b.vy * ts;
-            // ★ New Life System for normal bullets (e.g. Shrapnel)
             if(b.life !== undefined) {
                 b.life -= ts;
                 if(b.life <= 0) { bullets.splice(i, 1); continue; }
@@ -885,6 +937,10 @@ function shoot() {
     let count = stats.multi;
     if(player.class === 'Sniper') count = 1; 
     if(stats.infiniteMag) count += 3; 
+    
+    // Guardian Siege Mode
+    let currentDmg = stats.dmg;
+    if(stats.siegeMode && stats.isStationary) currentDmg *= 2;
 
     if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
 
@@ -940,8 +996,24 @@ function dash() {
     player.x = Math.max(15, Math.min(canvas.width-15, player.x));
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
     
+    if(stats.clusterMine) {
+         // Drop mines behind
+         for(let i=0; i<3; i++) {
+             let mx = player.x - dx * (20 + i*10);
+             let my = player.y - dy * (20 + i*10);
+             bullets.push({type:'missile', x:mx, y:my, vx:0, vy:0, speed:0, size:5, hit:[], isMini:false});
+         }
+    }
+
     createParticles(player.x, player.y, '#fff', 10, 2);
     Sound.play('dash'); 
+}
+
+function spawnSentry() {
+    if(sentries.length >= 5) sentries.shift();
+    sentries.push({x: player.x, y: player.y, cooldown: 0});
+    createParticles(player.x, player.y, '#0f0', 10, 3);
+    Sound.play('spark');
 }
 
 function fireMissile() {
@@ -984,6 +1056,13 @@ function createLightningEffect(x1, y1, x2, y2) {
 }
 
 function takeDamage(dmg) {
+    if(stats.forceField && stats.forceFieldCd <= 0) {
+        stats.forceFieldCd = 300; // 5 sec cooldown
+        Sound.play('bounce');
+        particles.push({type:'shockwave', x:player.x, y:player.y, size:50, life:20, color:'#0ff'});
+        return; 
+    }
+    
     if(player.invincible > 0) return;
     
     dmg = Math.max(1, dmg - stats.armor);
@@ -992,6 +1071,19 @@ function takeDamage(dmg) {
     player.invincible = 20; 
     screenShake = 15;
     createParticles(player.x, player.y, '#f00', 10, 4); updateUI();
+    
+    if(stats.reactiveArmor) {
+        Sound.play('spark');
+        particles.push({type:'shockwave', x:player.x, y:player.y, size:150, life:10, color:'#0f0'});
+        enemies.forEach(e => {
+             if(!e.dead && Math.hypot(e.x - player.x, e.y - player.y) < 150) {
+                 damageEnemy(e, stats.dmg);
+                 let ang = Math.atan2(e.y - player.y, e.x - player.x);
+                 e.x += Math.cos(ang) * 50; e.y += Math.sin(ang) * 50; 
+             }
+        });
+    }
+
     if(player.hp <= 0) gameOver();
 }
 
@@ -1019,6 +1111,12 @@ function draw() {
     }
 
     gasClouds.forEach(g => { ctx.fillStyle = `rgba(100, 0, 150, ${g.life/100})`; ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, Math.PI*2); ctx.fill(); });
+
+    // Sentries
+    sentries.forEach(s => {
+        ctx.fillStyle = '#0f0'; ctx.fillRect(s.x-10, s.y-10, 20, 20);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth=2; ctx.strokeRect(s.x-10, s.y-10, 20, 20);
+    });
 
     if(player.class === 'Melee' && spikeBits.length > 0) {
         ctx.fillStyle = '#f00';
@@ -1051,6 +1149,12 @@ function draw() {
         ctx.strokeStyle = '#fff'; ctx.strokeRect(-6, -6, 12, 12);
         ctx.restore();
     });
+
+    // Force Field Vis
+    if(stats.forceField && stats.forceFieldCd <= 0) {
+        ctx.strokeStyle = `rgba(0, 255, 255, 0.8)`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.size + 10, 0, Math.PI*2); ctx.stroke();
+    }
 
     if(player.invincible % 10 < 5) {
         ctx.shadowBlur = 30; ctx.shadowColor = player.color; ctx.fillStyle = player.color;
@@ -1173,6 +1277,10 @@ function triggerWarning() {
 
 function damageEnemy(e, dmg) {
     if(e.dead) return; 
+    
+    // Guardian Siege Bonus
+    if(stats.siegeMode && stats.isStationary) dmg *= 2;
+
     let isCrit = false;
     if(Math.random() < stats.critChance || stats.deadeye) { dmg *= (stats.deadeye ? 3 : 2); isCrit = true; } 
     
@@ -1204,17 +1312,16 @@ function damageEnemy(e, dmg) {
              particles.push({type:'shockwave', x:e.x, y:e.y, size:range, life:10, color:'#0ff'});
         }
 
-        // ★ Sniper Shrapnel Effect (Short Range)
         if(stats.shrapnel) {
             for(let i=0; i<3; i++) {
                 let ang = Math.random() * Math.PI * 2;
                 bullets.push({
                     type:'normal', 
                     x:e.x, y:e.y, 
-                    vx:Math.cos(ang)*(8+Math.random()*4), // Random Speed 
+                    vx:Math.cos(ang)*(8+Math.random()*4), 
                     vy:Math.sin(ang)*(8+Math.random()*4), 
                     size:3, hit:[e.id], pierce:1, isMini:true,
-                    life: 15 // ★ Disappear after 15 frames
+                    life: 15
                 });
             }
         }
@@ -1308,6 +1415,15 @@ function showMilestone() {
             {t:"💥 チェーンバースト", d:"敵撃破時に連鎖爆発", f:()=>{stats.chainBurst=true;}}, 
             {t:"☄️ 天罰", d:"ランダムに衛星レーザーが降り注ぐ", f:()=>{stats.orbital=true;}}
         ];
+    } else if(player.class === 'Guardian') {
+        pool = [
+            {t:"🏗️ セントリーシステム", d:"10秒ごとに自動タレット設置", f:()=>{stats.sentrySystem=true; spawnSentry();}},
+            {t:"🏯 シージモード", d:"静止中に攻撃速度・ダメージ2倍", f:()=>{stats.siegeMode=true;}},
+            {t:"⚡ リアクティブアーマー", d:"被弾時に電撃反撃", f:()=>{stats.reactiveArmor=true;}},
+            {t:"❤️ ナノマシン修復", d:"瀕死時に超高速再生", f:()=>{stats.nanoRepair=true;}},
+            {t:"💣 クラスターマイン", d:"ダッシュ時に地雷散布", f:()=>{stats.clusterMine=true;}},
+            {t:"🛡️ フォースフィールド", d:"定期的にダメージを無効化", f:()=>{stats.forceField=true;}}
+        ];
     }
 
     pool.sort(() => Math.random() - 0.5);
@@ -1322,7 +1438,7 @@ function showMilestone() {
         el.innerHTML = `<span class="icon">🌌</span><h3>${singOpt.t}</h3><p>${singOpt.d}</p>`;
         el.onclick = () => { singOpt.f(); resume(); };
         c.appendChild(el);
-        opts = opts.slice(0, 2); // Make room
+        opts = opts.slice(0, 2); 
     }
 
     opts.forEach(o => {
@@ -1358,7 +1474,7 @@ function showUpgrade() {
         {id:'chakram', t:"🥏 チャクラム", d:getTxt('chakram','跳弾円盤'), f:()=>stats.chakram++}
     ];
 
-    if(player.class === 'Melee') {
+    if(player.class === 'Melee' || player.class === 'Guardian') {
         allOpts = allOpts.filter(o => o.id !== 'pierce');
         allOpts.push({id:'armor', t:"🛡️ アーマー", d:"被ダメージ -2", f:()=>stats.armor+=2});
     }
@@ -1405,6 +1521,11 @@ function showEvo() {
             stats.drones+=1; 
             stats.shrapnel=true; 
             stats.knockback=1; 
+        }},
+        {t:"🧱 ガーディアン", d:"要塞: 🏗️タレット & 🛡️鉄壁", f:()=>{
+            player.class="Guardian"; player.color="#00ff88"; 
+            stats.armor+=5; player.maxHp+=500; player.hp=player.maxHp; stats.spd-=1; 
+            stats.sentrySystem=true; spawnSentry();
         }}
     ];
 
@@ -1448,7 +1569,18 @@ function updateSkillList() {
     if(stats.gatling) html += `<div style="color:#0ff">⚙️ GATLING</div>`;
     if(stats.railgun) html += `<div style="color:#ff0">🚅 RAILGUN</div>`;
     
-    // New Skills Vis
+    // Guardian Skills
+    if(stats.sentrySystem) html += `<div style="color:#0f0">🏗️ SENTRY SYS (${sentries.length})</div>`;
+    if(stats.siegeMode) {
+        let active = stats.isStationary ? "(ON)" : "(OFF)";
+        html += `<div style="color:#0f0">🏯 SIEGE ${active}</div>`;
+    }
+    if(stats.reactiveArmor) html += `<div style="color:#0f0">⚡ REACTIVE ARMOR</div>`;
+    if(stats.forceField) {
+        let ready = stats.forceFieldCd <= 0 ? "READY" : Math.ceil(stats.forceFieldCd/60)+"s";
+        html += `<div style="color:#0ff">🛡️ FORCE FIELD [${ready}]</div>`;
+    }
+
     if(stats.chainBurst) html += `<div style="color:#0ff">💥 CHAIN BURST</div>`;
     if(stats.electroFence) html += `<div style="color:#0ff">⚡ ELECTRO FENCE</div>`;
     if(stats.armor > 0) html += `<div style="color:#8f8">🛡️ ARMOR +${stats.armor}</div>`;
