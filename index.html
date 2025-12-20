@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v1.9: Chakram Update</title>
+    <title>Evo Lite v2.2: Simple Red</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -79,7 +79,7 @@
 
 <div id="warning-overlay">
     <div id="warning-text">WARNING</div>
-    <div style="color:white; font-size:20px; margin-top:10px; font-weight:bold;">BOSS APPROACHING</div>
+    <div style="color:white; font-size:20px; margin-top:10px; font-weight:bold;">BOSS DETECTED</div>
 </div>
 
 <div id="menu-overlay">
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.9 CHAKRAM UPDATE</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.2 SIMPLE START</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -101,26 +101,23 @@
 </div>
 
 <script>
-// --- 設定 ---
+// --- Config ---
 const MAX_PARTICLES = 250;
-const MAX_ORBS = 250;
+const MAX_ORBS = 300;
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 12;
 
-// --- モバイル判定 ---
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if(isMobile) {
     document.getElementById('mobile-controls').style.display = 'block';
     document.getElementById('dash-btn').style.display = 'flex';
 }
 
-// --- ジョイスティック変数 ---
 let joyTouchId = null;
 let joyStartX = 0, joyStartY = 0;
 let joyMoveX = 0, joyMoveY = 0;
 const JOY_MAX_RADIUS = 50;
 
-// --- サウンド ---
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let actx = null;
 let lastSoundTime = {};
@@ -156,7 +153,7 @@ const Sound = {
             osc.type='sawtooth'; osc.frequency.setValueAtTime(50, now); osc.frequency.linearRampToValueAtTime(150, now+0.1);
             gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
             osc.start(now); osc.stop(now+0.2);
-        } else if(type === 'bounce') { // Chakram bounce
+        } else if(type === 'bounce') { 
             osc.type='triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(300, now+0.1);
             gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
             osc.start(now); osc.stop(now+0.1);
@@ -214,9 +211,10 @@ let gameActive = false;
 let score = 0;
 let level = 1;
 let exp = 0;
-let nextExp = 20;
+let nextExp = 50; 
 let screenShake = 0;
-let bossWarningActive = false;
+let bossCycleCounter = 0; 
+let bossWarningTimer = 0;
 
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
@@ -378,7 +376,7 @@ function update(ts) {
     player.x = Math.max(15, Math.min(canvas.width-15, player.x));
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
 
-    // Skills
+    // --- Skills ---
     if(player.class === 'Melee' && stats.multi > 0) {
         if(spikeBits.length !== stats.multi) {
             spikeBits = []; for(let i=0; i<stats.multi; i++) spikeBits.push({angle:0});
@@ -461,10 +459,8 @@ function update(ts) {
         });
     }
 
-    // Aura Update
     if(stats.aura) {
         let r = stats.auraRange * stats.auraScale;
-        // Vanguard Buff: Homing increases aura attack rate
         let auraRate = 0.1;
         if(player.class === 'Melee' && stats.homing > 0) auraRate += (stats.homing * 0.05);
 
@@ -474,7 +470,6 @@ function update(ts) {
             if(dist < r + e.size) {
                 if(Math.random() < auraRate * ts) {
                     damageEnemy(e, stats.dmg);
-                    // Vanguard Buff: Lightning triggers on Aura hit
                     if(player.class === 'Melee' && stats.lightning > 0 && Math.random() < 0.3) {
                         triggerLightning(e, stats.lightning);
                     }
@@ -490,13 +485,12 @@ function update(ts) {
         });
     }
 
-    // Auto Shoot (Chakram included)
     if(!stats.aura && Math.random() < (1/stats.rate)*ts) {
         shoot();
         if(stats.chakram > 0 && Math.random() < 0.3) fireChakram();
     }
 
-    // Bullets Update
+    // --- Bullets ---
     let boundary = 200; 
     for(let i=bullets.length-1; i>=0; i--) {
         let b = bullets[i];
@@ -505,8 +499,6 @@ function update(ts) {
             b.x += b.vx * ts; b.y += b.vy * ts;
             b.life -= ts; 
             if(b.life <= 0) { bullets.splice(i, 1); continue; }
-            
-            // Wall Bounce
             if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
             if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
 
@@ -517,9 +509,8 @@ function update(ts) {
                 if(Math.hypot(b.x-e.x, b.y-e.y) < b.size + e.size) {
                     damageEnemy(e, stats.dmg * 1.5);
                     createParticles(b.x, b.y, '#0ff', 2, 2);
-                    // Hit Bounce
                     if(b.bounceCd <= 0) {
-                        let ang = Math.atan2(b.y - e.y, b.x - e.x); // Reflect away
+                        let ang = Math.atan2(b.y - e.y, b.x - e.x); 
                         let spd = Math.hypot(b.vx, b.vy);
                         b.vx = Math.cos(ang) * spd; b.vy = Math.sin(ang) * spd;
                         b.bounceCd = 10;
@@ -528,12 +519,10 @@ function update(ts) {
                 }
             }
             if(b.bounceCd > 0) b.bounceCd -= ts;
-            // Chakram rotation visual
             if(Math.random()<0.3) createParticles(b.x, b.y, '#8ff', 1, 1);
             continue;
         }
         
-        // Homing Logic Update (Super Homing)
         if(b.type !== 'missile' && stats.homing > 0) {
             let detectRange = 250 + (stats.homing * 50); 
             let target = null, minD = detectRange;
@@ -542,11 +531,10 @@ function update(ts) {
             if(target) {
                 let desiredAngle = Math.atan2(target.y - b.y, target.x - b.x);
                 let currentAngle = Math.atan2(b.vy, b.vx);
-                // Turn speed buffed
                 let turnSpeed = (0.05 + (stats.homing * 0.05)) * ts; 
                 let diff = desiredAngle - currentAngle;
                 if(diff > Math.PI) diff -= Math.PI*2; if(diff < -Math.PI) diff += Math.PI*2;
-                if(Math.abs(diff) < Math.PI) { // Always turn
+                if(Math.abs(diff) < Math.PI) {
                     currentAngle += Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed);
                     let speed = Math.hypot(b.vx, b.vy);
                     b.vx = Math.cos(currentAngle) * speed; b.vy = Math.sin(currentAngle) * speed;
@@ -627,9 +615,19 @@ function update(ts) {
     let spawnRate = Math.max(3, 25 - level * 1.5); 
     if(Math.random() < (1/spawnRate)*ts) spawnEnemy('random', gameTimeSec);
 
-    if(gameTimeSec > 300 && !bossWarningActive && !enemies.some(e=>e.type==='boss')) {
+    // --- Boss Cycle (5 mins) ---
+    let cycleTime = gameTimeSec % 300; 
+    let cycleWave = Math.floor(gameTimeSec / 300);
+
+    if(cycleTime > 295 && !bossWarningActive && cycleWave === bossCycleCounter) {
         bossWarningActive = true;
-        triggerWarning(true); 
+        triggerWarning();
+    }
+    if(cycleWave > bossCycleCounter) {
+        bossCycleCounter = cycleWave;
+        bossWarningActive = false;
+        document.getElementById('warning-overlay').style.display = 'none';
+        spawnEnemy('boss', gameTimeSec);
     }
 
     enemies.forEach(e => {
@@ -646,7 +644,7 @@ function update(ts) {
                 e.timer -= ts; if(e.timer <= 0) { e.state = 'dash'; e.timer = 30; e.vx = Math.cos(angle) * 14; e.vy = Math.sin(angle) * 14; }
             } else if(e.state === 'dash') {
                 e.x += e.vx * ts; e.y += e.vy * ts; e.timer -= ts; 
-                if(Math.random() < 0.5 * ts) createParticles(e.x, e.y, '#ff0', 1, 2);
+                if(Math.random() < 0.5 * ts) createParticles(e.x, e.y, '#f80', 1, 2);
                 if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 50; }
             } else if(e.state === 'cooldown') { e.timer -= ts; e.x += Math.cos(angle) * (e.speed * 0.2) * ts; if(e.timer <= 0) e.state = 'chase'; }
         } else if(e.ai === 'shooter') {
@@ -670,12 +668,10 @@ function update(ts) {
                 let cd = Math.max(10, 60 - stats.rate);
                 player.slamCd = cd; 
                 damageEnemy(e, stats.dmg * 2 * (player.size/15)); 
-                // Vanguard Buff: Pierce increases shockwave size
                 let waveSize = 15 + (stats.pierce * 5); 
                 Sound.play('bash');
                 createParticles(e.x, e.y, '#fff', 5, 2);
                 particles.push({type:'shockwave', x:player.x, y:player.y, size:waveSize, life:10, color:'#f00'});
-                // Shockwave AOE
                 enemies.forEach(subE => {
                     if(!subE.dead && Math.hypot(subE.x - player.x, subE.y - player.y) < waveSize * 3) {
                         damageEnemy(subE, stats.dmg * 0.5);
@@ -751,7 +747,9 @@ function createLightningEffect(x1, y1, x2, y2) {
 
 function takeDamage(dmg) {
     if(player.invincible > 0) return;
-    player.hp -= dmg; player.invincible = 30; screenShake = 15;
+    player.hp -= dmg; 
+    player.invincible = 20; 
+    screenShake = 15;
     createParticles(player.x, player.y, '#f00', 10, 4); updateUI();
     if(player.hp <= 0) gameOver();
 }
@@ -762,7 +760,9 @@ function draw() {
     ctx.save(); ctx.translate(shakeX, shakeY);
 
     ctx.fillStyle = '#050505'; ctx.fillRect(-20, -20, canvas.width+40, canvas.height+40);
-    ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.beginPath();
+    
+    // Grid
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1; ctx.beginPath();
     for(let i=0; i<canvas.width; i+=100) { ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); }
     for(let i=0; i<canvas.height; i+=100) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
     ctx.stroke();
@@ -780,10 +780,10 @@ function draw() {
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(Date.now() * 0.005);
         let r = stats.auraRange * stats.auraScale;
         let grad = ctx.createRadialGradient(0, 0, r*0.5, 0, 0, r);
-        grad.addColorStop(0, 'rgba(255, 0, 0, 0)'); grad.addColorStop(0.8, 'rgba(255, 0, 0, 0.4)');
-        if(stats.gravityAura) grad.addColorStop(0.9, 'rgba(50, 0, 50, 0.6)'); 
+        grad.addColorStop(0, 'rgba(0, 255, 255, 0)'); grad.addColorStop(0.8, 'rgba(0, 255, 255, 0.2)');
+        if(stats.gravityAura) grad.addColorStop(0.9, 'rgba(100, 0, 200, 0.4)'); 
         ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)'; ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)'; ctx.lineWidth = 2;
         ctx.beginPath(); for(let i=0; i<3; i++) { ctx.rotate(Math.PI*2/3); ctx.moveTo(r * 0.6, 0); ctx.lineTo(r, 0); }
         ctx.stroke(); ctx.restore();
     }
@@ -815,20 +815,26 @@ function draw() {
         } else {
             let drawSize = (player.class === 'Sniper' && b.type === 'normal') ? 8 : b.size;
             if(b.isMini) drawSize = 2;
-            ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.arc(b.x, b.y, drawSize, 0, Math.PI*2); ctx.fill(); 
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, drawSize, 0, Math.PI*2); ctx.fill(); 
         }
     });
-    ctx.fillStyle = '#f0a'; enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
+    // Enemy Bullets (Pink for visibility)
+    ctx.shadowBlur = 10; ctx.shadowColor = '#f00'; 
+    ctx.fillStyle = '#fff'; 
+    enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
+    ctx.shadowBlur = 0;
 
+    // Enemies (Unified Red, No Outline)
     enemies.forEach(e => {
-        ctx.fillStyle = e.flash > 0 ? '#fff' : e.color; ctx.beginPath();
+        ctx.fillStyle = e.flash > 0 ? '#fff' : e.color; 
+        ctx.beginPath();
         if(e.type === 'boss') {
             ctx.shadowBlur = 20; ctx.shadowColor = 'red'; ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); ctx.shadowBlur = 0;
             ctx.fillStyle = 'red'; ctx.fillRect(e.x-40, e.y-e.size-20, 80, 8); ctx.fillStyle = '#0f0'; ctx.fillRect(e.x-40, e.y-e.size-20, 80*(e.hp/e.maxHp), 8);
         } else {
-            if(e.ai === 'dasher') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y+e.size); ctx.lineTo(e.x-e.size, e.y+e.size); }
+            if(e.ai === 'dasher') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y+e.size); ctx.lineTo(e.x-e.size, e.y+e.size); ctx.closePath(); }
             else if(e.ai === 'splitter') { ctx.rect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); }
-            else if(e.ai === 'bat') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y); ctx.lineTo(e.x, e.y+e.size); ctx.lineTo(e.x-e.size, e.y); }
+            else if(e.ai === 'bat') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y); ctx.lineTo(e.x, e.y+e.size); ctx.lineTo(e.x-e.size, e.y); ctx.closePath(); }
             else if(e.ai === 'shooter') { ctx.rect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); }
             else if(e.ai === 'tank') { for(let i=0; i<6; i++) { let ang = i * Math.PI / 3; let px = e.x + Math.cos(ang) * e.size; let py = e.y + Math.sin(ang) * e.size; if(i===0) ctx.moveTo(px, py); else ctx.lineTo(px, py); } ctx.closePath(); }
             else { ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); }
@@ -922,22 +928,30 @@ function spawnEnemy(mode, time) {
 
 function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob' };
-    let hpMult = 1 + (level * 0.3); 
-    if(type === 'boss') { e.hp = 5000 * hpMult; e.maxHp = e.hp; e.size = 80; e.color = '#f00'; e.speed = 2.0; e.ai='boss'; e.type='boss'; }
-    else if(type === 'dasher') { e.hp = 40 * hpMult; e.maxHp = e.hp; e.size = 18; e.color = '#d80'; e.speed = 2.5; e.ai='dasher'; e.state='chase'; }
-    else if(type === 'splitter') { e.hp = 25 * hpMult; e.maxHp = e.hp; e.size = 20; e.color = '#a4a'; e.speed = 1.2; e.ai='splitter'; }
-    else if(type === 'bat') { e.hp = 10 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#808'; e.speed = 5.0; e.ai='bat'; }
-    else if(type === 'shooter') { e.hp = 30 * hpMult; e.maxHp = e.hp; e.size = 15; e.color = '#b0b'; e.speed = 1.8; e.ai='shooter'; }
-    else if(type === 'tank') { e.hp = 100 * hpMult; e.maxHp = e.hp; e.size = 22; e.color = '#622'; e.speed = 1.0; e.ai='tank'; }
-    else if(type === 'minion') { e.hp = 10 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#844'; e.speed = 3.0; e.ai='normal'; }
-    else { e.hp = 20 * hpMult; e.maxHp = e.hp; e.size = 14; e.color = '#d44'; e.speed = 2.0 + Math.random(); e.ai='normal'; }
+    
+    // HP Curve Update (v2.2): Easy start, Steep later
+    let hpMult = 1 + (level * 0.15); // Was 0.8
+    if(level > 15) hpMult *= 1.5 + ((level - 15) * 0.3); // Ramp up
+
+    if(type === 'boss') { 
+        e.hp = 8000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5; e.ai='boss'; e.type='boss'; 
+        e.hp *= (1 + bossCycleCounter * 0.5); 
+    }
+    // All enemies are now uniform RED (#ff3333) for simplicity
+    else if(type === 'dasher') { e.hp = 50 * hpMult; e.maxHp = e.hp; e.size = 18; e.color = '#ff3333'; e.speed = 2.5; e.ai='dasher'; e.state='chase'; }
+    else if(type === 'splitter') { e.hp = 40 * hpMult; e.maxHp = e.hp; e.size = 20; e.color = '#ff3333'; e.speed = 1.2; e.ai='splitter'; }
+    else if(type === 'bat') { e.hp = 15 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#ff3333'; e.speed = 5.0; e.ai='bat'; }
+    else if(type === 'shooter') { e.hp = 45 * hpMult; e.maxHp = e.hp; e.size = 15; e.color = '#ff3333'; e.speed = 1.8; e.ai='shooter'; }
+    else if(type === 'tank') { e.hp = 150 * hpMult; e.maxHp = e.hp; e.size = 24; e.color = '#ff3333'; e.speed = 1.0; e.ai='tank'; }
+    else if(type === 'minion') { e.hp = 15 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#ff3333'; e.speed = 3.0; e.ai='normal'; }
+    else { e.hp = 30 * hpMult; e.maxHp = e.hp; e.size = 14; e.color = '#ff3333'; e.speed = 2.0 + Math.random(); e.ai='normal'; }
     enemies.push(e);
 }
 
-function triggerWarning(isBoss) {
+function triggerWarning() {
     let w = document.getElementById('warning-overlay'); w.style.display = 'flex';
-    let count = 0; let iv = setInterval(() => { Sound.play('alert'); count++; if(count >= 3) clearInterval(iv); }, 800);
-    setTimeout(() => { w.style.display = 'none'; spawnEnemy('boss', 0); }, 3000);
+    let count = 0; 
+    let iv = setInterval(() => { Sound.play('alert'); count++; if(count >= 3) clearInterval(iv); }, 800);
 }
 
 function damageEnemy(e, dmg) {
@@ -959,22 +973,23 @@ function damageEnemy(e, dmg) {
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
 
         let baseVal = 10; 
-        if(level >= 45) baseVal = 5000;      
-        else if(level >= 35) baseVal = 1000; 
-        else if(level >= 25) baseVal = 300;  
-        else if(level >= 15) baseVal = 50;   
+        if(level >= 50) baseVal = 10000;     
+        else if(level >= 40) baseVal = 3000;
+        else if(level >= 30) baseVal = 800;  
+        else if(level >= 20) baseVal = 200;
+        else if(level >= 10) baseVal = 50;
 
         let val = baseVal;
-        if(e.type === 'boss') val = 10000;
-        else if(e.ai === 'tank') val = Math.max(200, baseVal * 3);
+        if(e.type === 'boss') val = 20000;
+        else if(e.ai === 'tank') val = Math.max(300, baseVal * 3);
 
         let orbType = { val: val, color: '#0ff', size: 4, pitch: 1.0 }; 
 
-        if(val >= 10000) orbType = { val: val, color: '#f0f', size: 14, pitch: 0.5 }; 
-        else if(val >= 5000) orbType = { val: val, color: '#f00', size: 12, pitch: 0.6 }; 
-        else if(val >= 1000) orbType = { val: val, color: '#f80', size: 10, pitch: 0.7 }; 
-        else if(val >= 300) orbType = { val: val, color: '#44f', size: 8, pitch: 0.8 }; 
-        else if(val >= 50) orbType = { val: val, color: '#0f0', size: 6, pitch: 0.9 }; 
+        if(val >= 20000) orbType = { val: val, color: '#f0f', size: 16, pitch: 0.5 }; 
+        else if(val >= 10000) orbType = { val: val, color: '#f00', size: 14, pitch: 0.6 }; 
+        else if(val >= 3000) orbType = { val: val, color: '#f80', size: 12, pitch: 0.7 }; 
+        else if(val >= 800) orbType = { val: val, color: '#00f', size: 10, pitch: 0.8 }; 
+        else if(val >= 200) orbType = { val: val, color: '#0f0', size: 8, pitch: 0.9 }; 
         
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
@@ -986,7 +1001,9 @@ function addExp(v, silent) {
     if(!gameActive) return; 
     exp += v; 
     if(exp >= nextExp) { 
-        exp = 0; level++; nextExp = Math.floor(nextExp*1.4); 
+        exp = 0; level++; 
+        // Slower Leveling Curve (Hardcore)
+        nextExp = Math.floor(nextExp * 1.25) + 100; 
         Sound.play('levelup'); updateUI(); 
         
         if(level === 5) showEvo(); 
@@ -1075,7 +1092,6 @@ function showUpgrade() {
         {id:'chakram', t:"🥏 チャクラム", d:getTxt('chakram','跳弾円盤'), f:()=>stats.chakram++}
     ];
 
-    // Vanguard: Unlock pierced/homing as specific buffs
     if(player.class === 'Assault') allOpts.push({id:'missile', t:"🚀 ミサイル", d:getTxt('missile','追尾ミサイル'), f:()=>stats.missile++, special:true});
     if(player.class === 'Sniper') allOpts.push({id:'drones', t:"🛰️ ドローン", d:getTxt('drones','攻撃ビット'), f:()=>stats.drones++, special:true});
     if(player.class === 'Melee') {
@@ -1083,7 +1099,7 @@ function showUpgrade() {
         allOpts.push({id:'superRegen', t:"💖 超回復", d:"回復 +10/s", f:()=>stats.regen+=10, special:true});
     }
 
-    let validOpts = allOpts.filter(o => true); // All allowed now for diversity
+    let validOpts = allOpts.filter(o => true);
 
     let p = []; 
     let saftey = 0;
