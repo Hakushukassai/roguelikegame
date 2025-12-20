@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v1.6: Mobile & PC</title>
+    <title>Evo Lite v1.7: Wide View</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
-        canvas { display: block; }
+        /* Canvasを画面いっぱいに引き伸ばして表示（内部解像度はJSで制御） */
+        canvas { display: block; width: 100vw; height: 100vh; }
         
-        /* UIレイヤー */
+        /* UIレイヤー（UIは画面サイズに合わせて相対配置） */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        #top-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); text-align: center; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); width: 80%; }
+        #top-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); text-align: center; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); width: 80%; max-width: 600px; }
         #xp-bg { width: 100%; height: 12px; background: #222; margin-top: 8px; border: 1px solid #555; border-radius: 6px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.5);}
         #xp-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #00ffff, #0088ff); transition: width 0.1s; }
-        #skill-list { position: absolute; top: 50px; right: 20px; text-align: right; color: rgba(255,255,255,0.8); font-size: 11px; line-height: 1.4; text-shadow: 1px 1px 2px #000; pointer-events: none; }
+        #skill-list { position: absolute; top: 60px; right: 20px; text-align: right; color: rgba(255,255,255,0.8); font-size: 11px; line-height: 1.4; text-shadow: 1px 1px 2px #000; pointer-events: none; }
         
         #hp-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 300px; text-align: center; color: white; font-weight: bold; pointer-events: none; }
         #hp-bar-bg { width: 100%; height: 16px; background: #330000; border: 2px solid #555; border-radius: 8px; overflow: hidden; margin-top:5px; box-shadow: 0 0 10px #f00; }
@@ -24,10 +25,8 @@
         
         /* スマホ用コントローラー */
         #mobile-controls { display: none; position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; }
-        /* 左スティックエリア（可視化用） */
         #joystick-zone { position: absolute; width: 100px; height: 100px; border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; transform: translate(-50%, -50%); pointer-events: none; }
         #joystick-knob { position: absolute; width: 40px; height: 40px; background: rgba(0, 255, 255, 0.5); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-        /* ダッシュボタン */
         #dash-btn { 
             position: absolute; bottom: 40px; right: 40px; width: 80px; height: 80px; 
             background: rgba(255, 255, 0, 0.3); border: 2px solid rgba(255, 255, 0, 0.6); 
@@ -48,6 +47,7 @@
         .card:hover, .card:active { background: #333; border-color: #0ff; transform: translateY(-5px) scale(1.05); box-shadow: 0 0 20px rgba(0,255,255,0.4); }
         .card.special { border-color: #ff0; background: #332200; } 
         .card.milestone { border-color: #f0f; background: #220022; }
+        .card.milestone:hover { border-color: #fff; background: #440044; box-shadow: 0 0 30px rgba(255,0,255,0.6); }
         .card .icon { font-size: 30px; margin-bottom: 5px; display: block; }
         .card h3 { color: #0ff; margin: 5px 0; font-size: 14px; }
         .card.special h3 { color: #ff0; }
@@ -92,7 +92,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.6 MOBILE & PC HYBRID</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.7 WIDE VIEW</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -104,11 +104,13 @@
 </div>
 
 <script>
-// --- 安全設定 ---
+// --- 設定 ---
 const MAX_PARTICLES = 250;
 const MAX_ORBS = 250;
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 12;
+// ★PC並みの視野を確保するための基準幅（この幅より狭い画面は縮小表示される）
+const TARGET_GAME_WIDTH = 1600; 
 
 // --- モバイル判定 ---
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -189,8 +191,24 @@ const Sound = {
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+
+// ★画面サイズ調整ロジック（視野拡張）
+let scaleFactor = 1;
+function resizeCanvas() {
+    let winW = window.innerWidth;
+    let winH = window.innerHeight;
+    
+    // 画面幅が基準より小さい場合、Canvasの内部解像度を上げて視野を広げる
+    scaleFactor = 1;
+    if (winW < TARGET_GAME_WIDTH) {
+        scaleFactor = TARGET_GAME_WIDTH / winW;
+    }
+    
+    canvas.width = winW * scaleFactor;
+    canvas.height = winH * scaleFactor;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas(); // 初回実行
 
 let lastTime = 0;
 let startTime = 0;
@@ -234,15 +252,18 @@ let gasClouds = [];
 let spikeBits = [];
 
 const keys = {};
-const mouse = { x: canvas.width/2, y: canvas.height/2 }; // デフォルトは中央
+// マウス座標はデフォルトで画面中央に
+const mouse = { x: canvas.width/2, y: canvas.height/2 }; 
 
-// --- 入力イベント ---
+// --- 入力イベント (スケール補正あり) ---
 window.addEventListener('keydown', e => { keys[e.key] = true; if(e.code === 'Space') dash(); });
 window.addEventListener('keyup', e => keys[e.key] = false);
-window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+window.addEventListener('mousemove', e => { 
+    // マウス座標もスケールに合わせて変換
+    mouse.x = e.clientX * scaleFactor; 
+    mouse.y = e.clientY * scaleFactor; 
+});
 
-// ダッシュボタン
 document.getElementById('dash-btn').addEventListener('touchstart', (e) => { e.preventDefault(); dash(); }, {passive: false});
 
 // ジョイスティック処理
@@ -263,7 +284,7 @@ window.addEventListener('touchstart', e => {
 }, {passive: false});
 
 window.addEventListener('touchmove', e => {
-    e.preventDefault(); // スクロール防止
+    e.preventDefault(); 
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
         if(t.identifier === joyTouchId) {
@@ -305,6 +326,11 @@ function startGame() {
     Sound.init();
     Sound.play('levelup');
     gameActive = true;
+    
+    // 開始時にプレイヤー位置をリセット
+    player.x = canvas.width/2;
+    player.y = canvas.height/2;
+    
     startTime = Date.now();
     lastTime = performance.now();
     updateSkillList();
@@ -339,21 +365,18 @@ function update(ts) {
         updateUI();
     }
 
-    // 移動処理 (キーボード + ジョイスティック)
     let dx = 0, dy = 0;
     if(keys['w'] || keys['ArrowUp']) dy = -1;
     if(keys['s'] || keys['ArrowDown']) dy = 1;
     if(keys['a'] || keys['ArrowLeft']) dx = -1;
     if(keys['d'] || keys['ArrowRight']) dx = 1;
 
-    // ジョイスティック入力があるなら上書き
     if(joyTouchId !== null) {
         dx = joyMoveX;
         dy = joyMoveY;
     }
 
     if(dx!==0 || dy!==0) {
-        // キーボードは正規化が必要、ジョイスティックは既に正規化済みだが念のため
         let len = Math.hypot(dx, dy);
         if(len > 1) { dx/=len; dy/=len; }
         
@@ -765,11 +788,11 @@ function dash() {
     if(player.dashCd > 0) return;
     player.dashCd = player.maxDashCd; player.invincible = 30; Sound.play('shoot');
     
-    // モバイルはジョイスティックの方向へ、PCはマウス方向へ
     let ang;
     if(isMobile && joyTouchId !== null && (joyMoveX !== 0 || joyMoveY !== 0)) {
         ang = Math.atan2(joyMoveY, joyMoveX);
     } else {
+        // マウス座標との差分
         ang = Math.atan2(mouse.y - player.y, mouse.x - player.x);
     }
     
@@ -782,11 +805,9 @@ function shoot() {
     enemies.forEach(e => { let d = Math.hypot(e.x-player.x, e.y-player.y); if(d < minD) { minD=d; target=e; } });
     
     let ang;
-    // スマホ版またはマウスが動いていない時はオートエイムを優先
     if(target && minD < 800) {
         ang = Math.atan2(target.y-player.y, target.x-player.x);
     } else {
-        // 敵がいない時はマウス方向（PC）または進行方向（スマホ）
         if(isMobile && (joyMoveX!==0 || joyMoveY!==0)) {
             ang = Math.atan2(joyMoveY, joyMoveX);
         } else {
