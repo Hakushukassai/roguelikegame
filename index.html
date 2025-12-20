@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.0.0: 2nd Evolution</title>
+    <title>Evo Lite v3.1.0: Unique Evolution</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -43,7 +43,7 @@
         #menu-overlay, #start-screen, #game-over { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); pointer-events: auto; z-index: 20; display: none; justify-content: center; align-items: center; flex-direction: column; }
         #start-screen { display: flex; }
         .card-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; max-height: 80vh; overflow-y: auto; padding: 10px; }
-        .card { width: 140px; background: #222; border: 1px solid #444; padding: 15px; color: white; cursor: pointer; text-align: center; transition: 0.1s; position: relative; overflow: hidden; border-radius: 8px; flex-shrink: 0; }
+        .card { width: 140px; background: #222; border: 1px solid #444; padding: 15px; color: white; cursor: pointer; text-align: center; transition: 0.1s; position: relative; overflow: hidden; border-radius: 8px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
         .card:hover, .card:active { background: #333; border-color: #0ff; transform: translateY(-5px) scale(1.05); box-shadow: 0 0 20px rgba(0,255,255,0.4); }
         .card.special { border-color: #ff0; background: #332200; } 
         .card.milestone { border-color: #f0f; background: #220022; }
@@ -51,14 +51,16 @@
         .card.singularity { border-color: #000; background: #fff; color:#000; box-shadow: 0 0 30px #fff; }
         .card.singularity h3 { color: #000; }
         .card.singularity p { color: #333; }
-        .card.evo { border-color: #0f0; background: #002211; box-shadow: 0 0 15px #0f0; }
-        .card.evo h3 { color: #0f0; }
         
+        .card.evo { width: 220px; border-color: #0f0; background: #002211; box-shadow: 0 0 15px #0f0; padding: 20px; }
+        .card.evo h3 { color: #0f0; font-size: 18px; margin: 10px 0; border-bottom: 1px solid #0f0; padding-bottom: 5px; width: 100%; }
+        .card.evo p { font-size: 12px; color: #dfd; line-height: 1.5; text-align: left; width: 100%; }
+        .card.evo .tag { display:inline-block; background:#0f0; color:#000; font-size:10px; padding:2px 5px; border-radius:4px; margin-bottom:5px; font-weight:bold;}
+
         .card .icon { font-size: 30px; margin-bottom: 5px; display: block; }
         .card h3 { color: #0ff; margin: 5px 0; font-size: 14px; }
         .card.special h3 { color: #ff0; }
         .card.milestone h3 { color: #f0f; }
-        .card.evo h3 { color: #0f0; }
         .card p { font-size: 11px; color: #ccc; line-height: 1.3; }
         
         button { padding: 20px 50px; font-size: 24px; cursor: pointer; background: #fff; border: none; font-weight: bold; margin-top: 30px; border-radius: 6px; transition: 0.2s; box-shadow: 0 0 10px #fff; }
@@ -103,7 +105,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.0.0 2nd EVOLUTION</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.1.0 UNIQUE EVOLUTION</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -260,7 +262,10 @@ let player = {
     invincible: 0,
     dashCd: 0, maxDashCd: 120,
     slamCd: 0,
-    laserCd: 0, freezeCd: 0 
+    laserCd: 0, freezeCd: 0,
+    // Unique states
+    sunCharge: 0, // Crusader
+    isMoving: false
 };
 
 let stats = {
@@ -281,7 +286,7 @@ let stats = {
     sentrySystem: false, siegeMode: false, reactiveArmor: false, 
     nanoRepair: false, clusterMine: false, forceField: false,
     forceFieldCd: 0, isStationary: false,
-    sentryMax: 5, sentryRate: 1.0, // New for Engineer
+    sentryMax: 5, sentryRate: 1.0,
     
     // Forbidden Skills
     shotExplode: false, shotBounce: false, doubleShot: false, 
@@ -293,9 +298,12 @@ let stats = {
     omegaLaser: false, absoluteZero: false, necromancer: false,
 
     // Sub Class Specifics
-    ghostShot: false, // Spectral
-    paladinHeal: false, // Crusader
-    isColossus: false
+    ghostShot: false, // Dimension Walker
+    prismSplit: false, // Prism Shooter
+    isEarthShaker: false,
+    teslaGrid: false,
+    bulletStorm: false, // Assault B
+    clusterStriker: false // Assault A
 };
 
 let bullets = [];
@@ -308,7 +316,8 @@ let orbitals = [];
 let drones = []; 
 let gasClouds = [];
 let spikeBits = [];
-let spikeBitsOuter = []; // Sword Saint
+// Flying Swords
+let flyingSwords = [];
 
 const keys = {};
 
@@ -444,6 +453,23 @@ function update(ts) {
                 }
             }
         });
+        
+        // Tesla Grid Logic
+        if(stats.teslaGrid && sentries.length >= 2) {
+            for(let i=0; i<sentries.length; i++) {
+                let s1 = sentries[i];
+                let s2 = sentries[(i+1)%sentries.length]; // Connect loop
+                enemies.forEach(e => {
+                    if(e.dead) return;
+                    // Line collision check
+                    let dist = pointToLineDistance(e.x, e.y, s1.x, s1.y, s2.x, s2.y);
+                    if(dist < e.size + 5) {
+                        damageEnemy(e, stats.dmg * 2.0); // High damage fence
+                        if(Math.random()<0.2*ts) createParticles(e.x, e.y, '#0ff', 2, 2);
+                    }
+                });
+            }
+        }
     }
 
     if(stats.forceField) {
@@ -524,55 +550,96 @@ function update(ts) {
         player.x += dx * stats.spd * ts;
         player.y += dy * stats.spd * ts;
         stats.isStationary = false;
+        player.isMoving = true;
     } else {
         stats.isStationary = true;
+        player.isMoving = false;
     }
 
     player.x = Math.max(15, Math.min(canvas.width-15, player.x));
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
 
+    // Earth Shaker Effect
+    if(stats.isEarthShaker && player.isMoving) {
+        if(Math.floor(Date.now() / 200) % 2 === 0) { // Every 200ms
+            screenShake = 2;
+            enemies.forEach(e => {
+                if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < player.size + 40) {
+                    damageEnemy(e, stats.dmg * 0.5); // Stomp damage
+                    let pushAng = Math.atan2(e.y - player.y, e.x - player.x);
+                    e.x += Math.cos(pushAng) * 10 * ts; e.y += Math.sin(pushAng) * 10 * ts; // Hard Push
+                }
+            });
+        }
+    }
+
     // --- Skills ---
     if(player.class === 'Melee' && (stats.multi > 0 || stats.bladeStorm)) {
         let count = stats.multi + (stats.bladeStorm ? 4 : 0);
-        // Blade Master SubClass
-        if(player.subClass === 'BladeMaster') count += 2; 
-        
-        if(spikeBits.length !== count) {
-            spikeBits = []; for(let i=0; i<count; i++) spikeBits.push({angle:0});
-        }
-        let rotSpd = 0.1 * ts;
-        spikeBits.forEach((bit, i) => {
-            bit.angle += rotSpd;
-            let currentAngle = bit.angle + (Math.PI*2/count)*i;
-            let radius = 25 + player.size/2 + (stats.titan ? 20 : 0);
-            if(stats.isColossus) radius += 20;
-            
-            bit.x = player.x + Math.cos(currentAngle) * radius;
-            bit.y = player.y + Math.sin(currentAngle) * radius;
-            enemies.forEach(e => {
-                if(!e.dead && Math.hypot(e.x-bit.x, e.y-bit.y) < 15 + e.size) {
-                    if(Math.random() < 0.1 * ts) damageEnemy(e, stats.dmg * 0.5);
-                }
-            });
-        });
-        
-        // Sword Saint Outer Ring
-        if(player.subClass === 'SwordSaint') {
-             if(spikeBitsOuter.length !== count) {
-                spikeBitsOuter = []; for(let i=0; i<count; i++) spikeBitsOuter.push({angle:0});
+        // Blade Master SubClass logic removed or adapted? 
+        // Flying Swords Logic
+        if(player.subClass === 'FlyingSwords') {
+             if(flyingSwords.length !== count) {
+                 // Reset
+                 flyingSwords = [];
+                 for(let i=0; i<count; i++) flyingSwords.push({x:player.x, y:player.y, target:null, cooldown:0});
              }
-             spikeBitsOuter.forEach((bit, i) => {
-                bit.angle -= rotSpd * 0.8; // Reverse spin
+             
+             flyingSwords.forEach(sw => {
+                 if(sw.cooldown > 0) sw.cooldown -= ts;
+                 
+                 // Find Target if none
+                 if(!sw.target || sw.target.dead || Math.hypot(sw.target.x-player.x, sw.target.y-player.y) > 400) {
+                     sw.target = null;
+                     let minD = 350;
+                     enemies.forEach(e => {
+                         if(e.dead) return;
+                         let d = Math.hypot(e.x-player.x, e.y-player.y);
+                         if(d < minD) { minD=d; sw.target=e; }
+                     });
+                 }
+                 
+                 let tx, ty;
+                 if(sw.target) {
+                     tx = sw.target.x; ty = sw.target.y;
+                 } else {
+                     // Orbit player if no target
+                     let angle = Date.now() * 0.002 + (flyingSwords.indexOf(sw) * (Math.PI*2/count));
+                     tx = player.x + Math.cos(angle) * 80;
+                     ty = player.y + Math.sin(angle) * 80;
+                 }
+                 
+                 // Move sword
+                 sw.x += (tx - sw.x) * 0.15 * ts;
+                 sw.y += (ty - sw.y) * 0.15 * ts;
+                 
+                 // Hit logic
+                 enemies.forEach(e => {
+                     if(!e.dead && Math.hypot(e.x-sw.x, e.y-sw.y) < 15 && sw.cooldown <= 0) {
+                         damageEnemy(e, stats.dmg * 0.8);
+                         createParticles(e.x, e.y, '#f0a', 1, 1);
+                         sw.cooldown = 15; // Hit interval
+                     }
+                 });
+             });
+
+        } else {
+            // Standard Orbit Logic
+            if(spikeBits.length !== count) {
+                spikeBits = []; for(let i=0; i<count; i++) spikeBits.push({angle:0});
+            }
+            let rotSpd = 0.1 * ts;
+            spikeBits.forEach((bit, i) => {
+                bit.angle += rotSpd;
                 let currentAngle = bit.angle + (Math.PI*2/count)*i;
-                let radius = 100 + player.size/2; // Larger radius
+                let radius = 25 + player.size/2 + (stats.titan ? 20 : 0);
+                if(stats.isColossus) radius += 20;
+                
                 bit.x = player.x + Math.cos(currentAngle) * radius;
                 bit.y = player.y + Math.sin(currentAngle) * radius;
                 enemies.forEach(e => {
-                    if(!e.dead && Math.hypot(e.x-bit.x, e.y-bit.y) < 25 + e.size) {
-                        if(Math.random() < 0.1 * ts) {
-                            damageEnemy(e, stats.dmg * 0.8);
-                            createParticles(e.x, e.y, '#f00', 1, 1);
-                        }
+                    if(!e.dead && Math.hypot(e.x-bit.x, e.y-bit.y) < 15 + e.size) {
+                        if(Math.random() < 0.1 * ts) damageEnemy(e, stats.dmg * 0.5);
                     }
                 });
             });
@@ -587,9 +654,7 @@ function update(ts) {
         drones.push({ x: player.x, y: player.y, angle: Math.random()*Math.PI*2, state: 'orbit', target: null, timer: 0 });
     }
     let droneSpeedMult = stats.drones > 2 ? 1.5 : 1.0; 
-    // Engineer Drone Speed
-    if(player.subClass === 'Engineer') droneSpeedMult *= 1.5;
-
+    
     drones.forEach(d => {
         if(d.state === 'orbit') {
             d.angle += 0.05 * ts * droneSpeedMult;
@@ -651,20 +716,37 @@ function update(ts) {
         let r = stats.auraRange * stats.auraScale;
         let auraRate = 0.1;
         if(player.class === 'Melee' && stats.homing > 0) auraRate += (stats.homing * 0.05);
-        if(player.subClass === 'Crusader') auraRate += 0.05; // Fast tick for crusader
+        
+        // Sun Crusher Logic
+        if(player.subClass === 'SunCrusher') {
+            if(player.isMoving) {
+                // Release charge
+                if(player.sunCharge > 0) {
+                    player.sunCharge -= ts * 5; // Drain fast
+                    r += player.sunCharge * 2; // Expand range based on charge
+                    auraRate = 0.5; // High tick rate
+                    // Add Damage Mod based on charge
+                    if(Math.random() < 0.3) createParticles(player.x+(Math.random()-0.5)*r, player.y+(Math.random()-0.5)*r, '#fa0', 1, 3);
+                }
+            } else {
+                // Charging
+                player.sunCharge = Math.min(100, player.sunCharge + ts);
+                r = 10; // Shrink when charging
+                if(Math.random()<0.1) createParticles(player.x, player.y, '#fa0', 1, 1);
+            }
+        }
 
         enemies.forEach(e => { 
             if(e.dead) return;
             let dist = Math.hypot(e.x-player.x, e.y-player.y);
             if(dist < r + e.size) {
                 if(Math.random() < auraRate * ts) {
-                    damageEnemy(e, stats.dmg);
+                    let d = stats.dmg;
+                    if(player.subClass === 'SunCrusher' && player.isMoving) d *= (1 + player.sunCharge/20);
+                    damageEnemy(e, d);
+                    
                     if(player.class === 'Melee' && stats.lightning > 0 && Math.random() < 0.3) {
                         triggerLightning(e, stats.lightning);
-                    }
-                    // Crusader Heal
-                    if(stats.paladinHeal && Math.random() < 0.05) {
-                         player.hp = Math.min(player.maxHp, player.hp + 0.5);
                     }
                 }
                 if(stats.gravityAura || stats.blackHole) {
@@ -681,6 +763,13 @@ function update(ts) {
     // Guardian Siege Mode
     let currentRate = stats.rate;
     if(stats.siegeMode && stats.isStationary) currentRate /= 2;
+    
+    // Bullet Storm (Assault) Logic
+    if(stats.bulletStorm) {
+        // Always shoot fast, rate improves as you fire?
+        // Simplified: Just very fast rate + high spread
+        currentRate = 3; 
+    }
 
     if(!stats.aura && Math.random() < (1/currentRate)*ts) {
         shoot();
@@ -773,12 +862,19 @@ function update(ts) {
                 if(b.life <= 0) { bullets.splice(i, 1); continue; }
             }
 
-            // Ghost Shot Logic (Screen Wrap)
+            // Ghost Shot Logic (Screen Wrap + Power Up)
             if(stats.ghostShot) {
-                if(b.x < 0) b.x = canvas.width;
-                else if(b.x > canvas.width) b.x = 0;
-                if(b.y < 0) b.y = canvas.height;
-                else if(b.y > canvas.height) b.y = 0;
+                let wrapped = false;
+                if(b.x < 0) { b.x = canvas.width; wrapped=true; }
+                else if(b.x > canvas.width) { b.x = 0; wrapped=true; }
+                if(b.y < 0) { b.y = canvas.height; wrapped=true; }
+                else if(b.y > canvas.height) { b.y = 0; wrapped=true; }
+
+                if(wrapped) {
+                    b.size = Math.min(50, b.size * 1.5); // Grow
+                    b.damageMult = (b.damageMult || 1) * 1.5; // Damage up
+                    b.pierce = 999; // Reset pierce effectively
+                }
             }
         }
 
@@ -813,12 +909,36 @@ function update(ts) {
                     if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#f00', 10 * stats.missileBlast, 5 * stats.missileBlast);
                     bullets.splice(i, 1); hit = true; break;
                 } else {
-                    damageEnemy(e, stats.dmg);
+                    let finalDmg = stats.dmg * (b.damageMult || 1);
+                    damageEnemy(e, finalDmg);
                     
                     if(stats.knockback > 0 && !b.isMini) {
                         let ang = Math.atan2(e.y - player.y, e.x - player.x);
                         e.x += Math.cos(ang) * stats.knockback * 20;
                         e.y += Math.sin(ang) * stats.knockback * 20;
+                    }
+                    
+                    // Cluster Striker Logic
+                    if(stats.clusterStriker && !b.isMini) {
+                         // Spawn mini bombs
+                         Sound.play('explode', 2.0);
+                         for(let k=0; k<6; k++) {
+                             let ang = (Math.PI*2/6)*k;
+                             bullets.push({type:'missile', x:e.x, y:e.y, vx:Math.cos(ang)*5, vy:Math.sin(ang)*5, size:4, speed:0, hit:[e.id], isMini:true});
+                         }
+                    }
+
+                    // Prism Shooter Split Logic
+                    if(stats.prismSplit && !b.isMini && (b.splitCount || 0) < 2) {
+                        for(let k=0; k<2; k++) {
+                             let ang = Math.atan2(b.vy, b.vx) + (k===0 ? 0.5 : -0.5);
+                             bullets.push({
+                                 type:'normal', x:e.x, y:e.y, 
+                                 vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, 
+                                 size:b.size*0.8, hit:[e.id], pierce:0, isMini:false, color:'#f0f',
+                                 splitCount: (b.splitCount||0)+1
+                             });
+                        }
                     }
 
                     if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; 
@@ -933,8 +1053,8 @@ function update(ts) {
                     Sound.play('hit');
                 }
                 
-                // Colossus Collision
-                if(stats.isColossus) {
+                // Earth Shaker Collision
+                if(stats.isEarthShaker) {
                     damageEnemy(e, stats.dmg * 2); // Body slam damage
                     Sound.play('bash');
                     let kickAng = Math.atan2(e.y - player.y, e.x - player.x);
@@ -1045,7 +1165,10 @@ function shoot() {
     if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
 
     let spread = 0.1;
-    if(stats.gatling) spread = 0.3; // More spread for gatling
+    if(stats.bulletStorm) {
+        spread = 0.5 + Math.sin(Date.now()*0.01)*0.5; // Chaos spread
+        count += 3; // Extra bullets
+    }
     let startAngle = angle - (spread * (count-1)) / 2;
 
     for(let i=0; i<count; i++) {
@@ -1054,9 +1177,6 @@ function shoot() {
         let vy = Math.sin(currentAngle) * stats.bulletSpeed;
         
         let bType = 'normal';
-        // Assault - Bomber
-        if(stats.shotExplode) bType = 'normal'; // Explode handles in collision
-
         bullets.push({
             type: bType,
             x: player.x,
@@ -1064,7 +1184,7 @@ function shoot() {
             vx: vx,
             vy: vy,
             size: stats.railgun ? 10 : 5,
-            color: stats.ghostShot ? '#88ff88' : '#fff', // Green for ghost
+            color: stats.ghostShot ? '#88ff88' : (stats.prismSplit ? '#f0f' : '#fff'),
             hit: [],
             pierce: stats.pierce,
             isMini: false
@@ -1118,6 +1238,21 @@ function spawnSentry() {
     sentries.push({x: player.x, y: player.y, cooldown: 0});
     createParticles(player.x, player.y, '#0f0', 10, 3);
     Sound.play('spark');
+}
+
+function pointToLineDistance(px, py, x1, y1, x2, y2) {
+    let A = px - x1; let B = py - y1;
+    let C = x2 - x1; let D = y2 - y1;
+    let dot = A * C + B * D;
+    let len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) param = dot / len_sq;
+    let xx, yy;
+    if (param < 0) { xx = x1; yy = y1; }
+    else if (param > 1) { xx = x2; yy = y2; }
+    else { xx = x1 + param * C; yy = y1 + param * D; }
+    let dx = px - xx; let dy = py - yy;
+    return Math.hypot(dx, dy);
 }
 
 function fireMissile() {
@@ -1221,28 +1356,45 @@ function draw() {
         ctx.fillStyle = '#0f0'; ctx.fillRect(s.x-10, s.y-10, 20, 20);
         ctx.strokeStyle = '#fff'; ctx.lineWidth=2; ctx.strokeRect(s.x-10, s.y-10, 20, 20);
     });
+    // Tesla Grid Lines
+    if(stats.teslaGrid && sentries.length >= 2) {
+        ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.shadowColor='#0ff';
+        ctx.beginPath();
+        ctx.moveTo(sentries[0].x, sentries[0].y);
+        for(let i=1; i<sentries.length; i++) ctx.lineTo(sentries[i].x, sentries[i].y);
+        ctx.lineTo(sentries[0].x, sentries[0].y);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    if(player.class === 'Melee' && flyingSwords.length > 0) {
+        ctx.fillStyle = '#f0a';
+        flyingSwords.forEach(sw => {
+            ctx.save(); ctx.translate(sw.x, sw.y); ctx.rotate(Date.now()*0.1);
+            ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.fill();
+            ctx.restore();
+            // Trail
+            ctx.strokeStyle = 'rgba(255, 0, 100, 0.3)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(sw.x, sw.y); ctx.stroke();
+        });
+    }
 
     if(player.class === 'Melee' && spikeBits.length > 0) {
         ctx.fillStyle = '#f00';
         spikeBits.forEach(bit => {
             ctx.beginPath(); ctx.moveTo(bit.x, bit.y - 8); ctx.lineTo(bit.x + 6, bit.y + 6); ctx.lineTo(bit.x - 6, bit.y + 6); ctx.fill();
         });
-        // Sword Saint Outer Ring
-        if(spikeBitsOuter.length > 0) {
-            ctx.fillStyle = '#f0a';
-            spikeBitsOuter.forEach(bit => {
-                ctx.beginPath(); ctx.moveTo(bit.x, bit.y - 12); ctx.lineTo(bit.x + 8, bit.y + 8); ctx.lineTo(bit.x - 8, bit.y + 8); ctx.fill();
-            });
-        }
     }
 
     if(stats.aura) {
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(Date.now() * 0.005);
         let r = stats.auraRange * stats.auraScale;
-        let grad = ctx.createRadialGradient(0, 0, r*0.5, 0, 0, r);
         let auraColor = '0, 255, 255';
-        if(player.subClass === 'Crusader') auraColor = '255, 215, 0'; // Gold for Crusader
+        if(player.subClass === 'SunCrusher') {
+            auraColor = '255, 100, 0'; // Magma
+            if(player.isMoving) r += player.sunCharge * 2;
+        }
 
+        let grad = ctx.createRadialGradient(0, 0, r*0.5, 0, 0, r);
         grad.addColorStop(0, `rgba(${auraColor}, 0)`); grad.addColorStop(0.8, `rgba(${auraColor}, 0.2)`);
         if(stats.gravityAura) grad.addColorStop(0.9, 'rgba(100, 0, 200, 0.4)'); 
         if(stats.blackHole) { grad.addColorStop(1, 'rgba(0, 0, 0, 0.6)'); ctx.strokeStyle='#f0f'; } 
@@ -1509,82 +1661,74 @@ function showSecondEvo() {
     gameActive = false;
     let m = document.getElementById('menu-overlay'); let c = document.getElementById('card-area');
     c.innerHTML = ''; m.style.display = 'flex';
-    document.querySelector('#menu-title').innerText = "第2次進化 (2nd Evo)";
+    document.querySelector('#menu-title').innerText = "第2次進化 (Class Evolution)";
 
     let evos = [];
 
     if(player.class === 'Assault') {
         evos = [
-            {t:"🔫 ガトリング・ヴァイパー", d:"発射レート限界突破 + 弾散布", f:()=>{
-                player.subClass = 'GatlingViper';
-                stats.rate = 2; // Ultra fast
-                stats.dmg = Math.max(5, stats.dmg * 0.7); // Balance
-                stats.gatling = true;
-                player.color = "#0088ff";
-            }},
-            {t:"💣 ヘビー・ボマー", d:"全通常弾が着弾時に爆発", f:()=>{
-                player.subClass = 'HeavyBomber';
-                stats.shotExplode = true;
+            {t:"💥 クラスター・ストライカー", d:"爆発特化: 着弾時に「子爆弾」が周囲に飛び散り、誘爆連鎖を引き起こす。", f:()=>{
+                player.subClass = 'ClusterStriker';
+                stats.clusterStriker = true;
                 stats.dmg *= 1.2;
                 player.color = "#ff8800";
+            }},
+            {t:"🌪️ バレット・ストーム", d:"弾幕特化: 攻撃中、連射速度と拡散範囲が無限に上昇する。画面を埋め尽くせ！", f:()=>{
+                player.subClass = 'BulletStorm';
+                stats.bulletStorm = true;
+                player.color = "#0088ff";
             }}
         ];
     } else if(player.class === 'Melee') {
         evos = [
-            {t:"⚔️ ソードセイント", d:"二重回転刃を展開", f:()=>{
-                player.subClass = 'SwordSaint';
-                stats.bladeStorm = true; // Ensure extra blades
-                stats.dmg *= 1.3;
+            {t:"🗡️ 御剣 (Flying Swords)", d:"遠隔斬撃: 回転刃がプレイヤーから離れ、自律して敵を追尾・切り刻む。", f:()=>{
+                player.subClass = 'FlyingSwords';
                 player.color = "#ff0066";
             }},
-            {t:"🛡️ クルセイダー", d:"オーラが聖炎化(回復&ダメ)", f:()=>{
-                player.subClass = 'Crusader';
-                stats.paladinHeal = true;
+            {t:"☀️ サン・クラッシャー", d:"灼熱領域: 停止中にエネルギー充填。移動開始時に超広範囲の爆熱波を放つ。", f:()=>{
+                player.subClass = 'SunCrusher';
                 stats.auraRange += 50;
                 player.color = "#ffd700";
             }}
         ];
     } else if(player.class === 'Sniper') {
         evos = [
-            {t:"👻 ファントム", d:"弾が画面をループ＆無限貫通", f:()=>{
-                player.subClass = 'Phantom';
+            {t:"🌌 ディメンション・ウォーカー", d:"次元干渉: 弾が画面端をループする度、巨大化し威力が倍増する。", f:()=>{
+                player.subClass = 'DimensionWalker';
                 stats.ghostShot = true;
                 stats.infinitePierce = true;
                 player.color = "#88ff88";
             }},
-            {t:"🎱 リコシェ・エース", d:"跳弾回数+5 & 威力増強", f:()=>{
-                player.subClass = 'RicochetAce';
-                stats.shotBounce = true;
-                stats.bounceCount = 5;
-                stats.dmg *= 1.5;
+            {t:"💎 プリズム・シューター", d:"幾何学反射: 弾が敵や壁に当たるたびに2つに分裂し、レーザー網を形成する。", f:()=>{
+                player.subClass = 'PrismShooter';
+                stats.prismSplit = true;
+                stats.dmg *= 0.8; // Balance
                 player.color = "#ff00ff";
             }}
         ];
     } else if(player.class === 'Guardian') {
         evos = [
-            {t:"🏗️ メカニスト", d:"タレット上限10個 & 高速化", f:()=>{
-                player.subClass = 'Mechanist';
-                stats.sentryMax = 10;
-                stats.sentryRate = 0.5; // Fast fire
+            {t:"⚡ テスラ・エンジニア", d:"電気柵: 設置したタレット同士が「高圧電流」で接続され、触れた敵を焼き尽くす。", f:()=>{
+                player.subClass = 'TeslaEngineer';
+                stats.teslaGrid = true;
+                stats.sentryMax = 8;
                 player.color = "#00ffcc";
             }},
-            {t:"🗿 コロッサス", d:"巨大化 & 接触粉砕 & 超アーマー", f:()=>{
-                player.subClass = 'Colossus';
-                stats.isColossus = true;
+            {t:"🦍 アース・シェイカー", d:"重戦車: 巨大化し、歩くだけで足元に衝撃波が発生。敵を弾き飛ばし粉砕する。", f:()=>{
+                player.subClass = 'EarthShaker';
+                stats.isEarthShaker = true;
                 player.size = 30; // Huge
                 player.maxHp += 1000; player.hp += 1000;
                 stats.armor += 10;
-                player.color = "#555555";
+                player.color = "#885500";
             }}
         ];
     }
 
-    if(evos.length === 0) { resume(); return; } // Should not happen
-
     evos.forEach(o => {
         let el = document.createElement('div'); el.className='card evo';
         let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-        el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.d}</p>`;
+        el.innerHTML = `<h3><span class="icon">${icon}</span>${title}</h3><p>${o.d}</p>`;
         el.onclick = () => { 
             o.f(); 
             let nameSpan = document.getElementById('disp-class-name');
@@ -1605,49 +1749,49 @@ function showMilestone() {
 
     // Common Unique
     let pool = [
-        {t:"⚡ オメガ・レーザー", d:"3秒ごとに画面を薙ぎ払う", f:()=>{stats.omegaLaser=true;}},
-        {t:"❄️ アブソリュート・ゼロ", d:"周囲の敵を凍結停止させる", f:()=>{stats.absoluteZero=true;}}, 
-        {t:"💀 ネクロマンサー", d:"敵撃破時に追尾怨霊を召喚", f:()=>{stats.necromancer=true;}},
-        {t:"🩸 血の契約", d:"HPが1になる / 攻撃力5倍", f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;}},
-        {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間 3倍", f:()=>{player.invincible=60;}}
+        {t:"⚡ オメガ・レーザー", d:"3秒ごとに画面を薙ぎ払う極太レーザーを発射。", f:()=>{stats.omegaLaser=true;}},
+        {t:"❄️ アブソリュート・ゼロ", d:"周囲の敵を凍結させ、長時間停止させるオーラ。", f:()=>{stats.absoluteZero=true;}}, 
+        {t:"💀 ネクロマンサー", d:"敵撃破時に、敵を追尾する怨霊弾を召喚する。", f:()=>{stats.necromancer=true;}},
+        {t:"🩸 血の契約", d:"最大HPが1になる代わりに、攻撃力が5倍になる。", f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;}},
+        {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間が3倍になる。", f:()=>{player.invincible=60;}}
     ];
 
     // Class Specific Pools
     if(player.class === 'Assault') {
         pool = [
-            {t:"💣 爆裂弾", d:"通常弾が着弾時に爆発する", f:()=>{stats.shotExplode=true;}},
-            {t:"↩️ 跳弾", d:"弾が画面端で跳ね返る", f:()=>{stats.shotBounce=true;}},
-            {t:"👯 ダブルトリガー", d:"50%の確率で2回発射", f:()=>{stats.doubleShot=true;}},
-            {t:"🚀 ミサイル祭", d:"射撃時に20%でミサイル発射", f:()=>{stats.missileChance=0.2;}},
-            {t:"♾️ 無限マガジン", d:"発射数+3 / リロードなし", f:()=>{stats.infiniteMag=true;}},
-            {t:"⚙️ ガトリング", d:"連射速度限界突破", f:()=>{stats.rate=Math.max(1, stats.rate-10); stats.gatling=true;}}
+            {t:"💣 爆裂弾", d:"全ての通常弾が着弾時に爆発するようになる。", f:()=>{stats.shotExplode=true;}},
+            {t:"↩️ 跳弾", d:"弾が画面端で跳ね返るようになる。", f:()=>{stats.shotBounce=true;}},
+            {t:"👯 ダブルトリガー", d:"50%の確率で、一度に2発の弾を発射する。", f:()=>{stats.doubleShot=true;}},
+            {t:"🚀 ミサイル祭", d:"射撃時に20%の確率で追加ミサイルを発射。", f:()=>{stats.missileChance=0.2;}},
+            {t:"♾️ 無限マガジン", d:"一度の発射数+3。リロード時間がゼロになる。", f:()=>{stats.infiniteMag=true;}},
+            {t:"⚙️ ガトリング", d:"連射速度が限界突破し、凄まじい弾幕を張る。", f:()=>{stats.rate=Math.max(1, stats.rate-10); stats.gatling=true;}}
         ];
     } else if(player.class === 'Melee') {
         pool = [
-            {t:"🦍 タイタン", d:"HP2倍 / サイズ1.5倍", f:()=>{player.maxHp*=2; player.hp*=2; player.size*=1.5; stats.titan=true;}},
-            {t:"⚫ ブラックホール", d:"オーラの吸引力が超強化", f:()=>{stats.blackHole=true;}},
-            {t:"⚔️ ブレードストーム", d:"回転刃+4枚追加", f:()=>{stats.bladeStorm=true;}},
-            {t:"🌎 アースクエイク", d:"2秒ごとに全体攻撃", f:()=>{stats.earthquake=true;}},
-            {t:"🌵 スパイクリフレクト", d:"接触ダメージを2倍で反射", f:()=>{stats.spikeReflect=true;}},
-            {t:"🧛 ブラッドラスト", d:"敵撃破時にHP1%回復", f:()=>{stats.bloodLust=true;}}
+            {t:"🦍 タイタン", d:"HP2倍、サイズ1.5倍。攻撃判定も巨大化。", f:()=>{player.maxHp*=2; player.hp*=2; player.size*=1.5; stats.titan=true;}},
+            {t:"⚫ ブラックホール", d:"オーラが敵を強力に吸い寄せるようになる。", f:()=>{stats.blackHole=true;}},
+            {t:"⚔️ ブレードストーム", d:"回転刃の枚数が+4枚追加される。", f:()=>{stats.bladeStorm=true;}},
+            {t:"🌎 アースクエイク", d:"2秒ごとに画面全体攻撃を行い、敵を気絶させる。", f:()=>{stats.earthquake=true;}},
+            {t:"🌵 スパイクリフレクト", d:"敵接触時のダメージを2倍にして反射する。", f:()=>{stats.spikeReflect=true;}},
+            {t:"🧛 ブラッドラスト", d:"敵を倒すとHPが1%回復する。", f:()=>{stats.bloodLust=true;}}
         ];
     } else if(player.class === 'Sniper') {
         pool = [
-            {t:"🚅 レールガン", d:"弾速2倍 / サイズ2倍 / 無限貫通", f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;}},
-            {t:"🔪 処刑人", d:"HP30%以下の敵を即死", f:()=>{stats.execute=true;}},
-            {t:"👁️ デッドアイ", d:"確定クリティカル / 倍率強化", f:()=>{stats.deadeye=true;}},
-            {t:"⚡ エレクトロフェンス", d:"周囲の敵を麻痺・弾き飛ばす", f:()=>{stats.electroFence=true;}}, 
-            {t:"💥 チェーンバースト", d:"敵撃破時に連鎖爆発", f:()=>{stats.chainBurst=true;}}, 
-            {t:"☄️ 天罰", d:"ランダムに衛星レーザーが降り注ぐ", f:()=>{stats.orbital=true;}}
+            {t:"🚅 レールガン", d:"弾速2倍、サイズ2倍。全ての敵を貫通する。", f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;}},
+            {t:"🔪 処刑人", d:"HP30%以下の敵に攻撃すると即死させる。", f:()=>{stats.execute=true;}},
+            {t:"👁️ デッドアイ", d:"全ての攻撃がクリティカル(3倍ダメージ)になる。", f:()=>{stats.deadeye=true;}},
+            {t:"⚡ エレクトロフェンス", d:"周囲の敵を麻痺させ、弾き飛ばす電気柵を展開。", f:()=>{stats.electroFence=true;}}, 
+            {t:"💥 チェーンバースト", d:"敵を倒すと連鎖爆発が発生し、周囲を巻き込む。", f:()=>{stats.chainBurst=true;}}, 
+            {t:"☄️ 天罰", d:"ランダムな位置に強力な衛星レーザーが降り注ぐ。", f:()=>{stats.orbital=true;}}
         ];
     } else if(player.class === 'Guardian') {
         pool = [
-            {t:"🏗️ セントリーシステム", d:"10秒ごとに自動タレット設置", f:()=>{stats.sentrySystem=true; spawnSentry();}},
-            {t:"🏯 シージモード", d:"静止中に攻撃速度・ダメージ2倍", f:()=>{stats.siegeMode=true;}},
-            {t:"⚡ リアクティブアーマー", d:"被弾時に電撃反撃", f:()=>{stats.reactiveArmor=true;}},
-            {t:"❤️ ナノマシン修復", d:"瀕死時に超高速再生", f:()=>{stats.nanoRepair=true;}},
-            {t:"💣 クラスターマイン", d:"ダッシュ時に地雷散布", f:()=>{stats.clusterMine=true;}},
-            {t:"🛡️ フォースフィールド", d:"定期的にダメージを無効化", f:()=>{stats.forceField=true;}}
+            {t:"🏗️ セントリーシステム", d:"10秒ごとに自動攻撃タレットを設置する。", f:()=>{stats.sentrySystem=true; spawnSentry();}},
+            {t:"🏯 シージモード", d:"立ち止まっている間、攻撃速度とダメージが2倍。", f:()=>{stats.siegeMode=true;}},
+            {t:"⚡ リアクティブアーマー", d:"ダメージを受けると、周囲に電撃カウンターを放つ。", f:()=>{stats.reactiveArmor=true;}},
+            {t:"❤️ ナノマシン修復", d:"HPが30%以下になると超高速で自然回復する。", f:()=>{stats.nanoRepair=true;}},
+            {t:"💣 クラスターマイン", d:"ダッシュ時に大量の地雷をばら撒く。", f:()=>{stats.clusterMine=true;}},
+            {t:"🛡️ フォースフィールド", d:"定期的にダメージを完全無効化するバリアを展開。", f:()=>{stats.forceField=true;}}
         ];
     }
 
