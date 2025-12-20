@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.7.0: Guardian</title>
+    <title>Evo Lite v2.7.1: System Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -100,7 +100,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.7.0 GUARDIAN</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.7.1 SYSTEM UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -241,7 +241,7 @@ let earthquakeTimer = 0;
 let electroFenceTimer = 0; 
 let singularityMode = false;
 
-// ★ Guardian: Sentry System
+// Guardian Sentry
 let sentries = [];
 let sentryTimer = 0;
 
@@ -560,6 +560,10 @@ function update(ts) {
             d.x += Math.cos(ang) * 12 * ts * droneSpeedMult; d.y += Math.sin(ang) * 12 * ts * droneSpeedMult;
             if(Math.hypot(d.x - d.target.x, d.y - d.target.y) < 20) {
                 damageEnemy(d.target, stats.dmg * 2);
+                
+                // ★ NEW: Drones now trigger lightning
+                if(stats.lightning > 0) triggerLightning(d.target, stats.lightning);
+
                 if(particles.length < MAX_PARTICLES) createParticles(d.x, d.y, '#ff0', 5, 2);
                 d.state = 'return'; d.timer = 30 / droneSpeedMult; 
             }
@@ -624,7 +628,7 @@ function update(ts) {
         });
     }
 
-    // Guardian Siege Mode Logic
+    // Guardian Siege Mode
     let currentRate = stats.rate;
     if(stats.siegeMode && stats.isStationary) currentRate /= 2;
 
@@ -772,6 +776,7 @@ function update(ts) {
                         }
                     }
 
+                    // ★ Bullets (Player & Turret) trigger Lightning
                     if(stats.lightning > 0) triggerLightning(e, stats.lightning);
                     b.hit.push(e.id);
                     if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#ffffaa', 3, 2); 
