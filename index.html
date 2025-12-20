@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v1.7: Wide View</title>
+    <title>Evo Lite v1.8: Smart View</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
-        /* Canvasを画面いっぱいに引き伸ばして表示（内部解像度はJSで制御） */
         canvas { display: block; width: 100vw; height: 100vh; }
         
-        /* UIレイヤー（UIは画面サイズに合わせて相対配置） */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         #top-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); text-align: center; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); width: 80%; max-width: 600px; }
         #xp-bg { width: 100%; height: 12px; background: #222; margin-top: 8px; border: 1px solid #555; border-radius: 6px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.5);}
@@ -23,7 +21,6 @@
         @keyframes pulse { 0%{opacity:0.5;} 50%{opacity:1;} 100%{opacity:0.5;} }
         #score-box { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 16px; font-weight: bold; text-shadow: 0 0 5px #000; }
         
-        /* スマホ用コントローラー */
         #mobile-controls { display: none; position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; }
         #joystick-zone { position: absolute; width: 100px; height: 100px; border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; transform: translate(-50%, -50%); pointer-events: none; }
         #joystick-knob { position: absolute; width: 40px; height: 40px; background: rgba(0, 255, 255, 0.5); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
@@ -92,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.7 WIDE VIEW</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.8 SMART VIEW</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -109,8 +106,6 @@ const MAX_PARTICLES = 250;
 const MAX_ORBS = 250;
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 12;
-// ★PC並みの視野を確保するための基準幅（この幅より狭い画面は縮小表示される）
-const TARGET_GAME_WIDTH = 1600; 
 
 // --- モバイル判定 ---
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -192,23 +187,26 @@ const Sound = {
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// ★画面サイズ調整ロジック（視野拡張）
+// ★画面サイズ調整: 縦持ちの場合は視野を狭く（ズーム）して見やすくする
 let scaleFactor = 1;
 function resizeCanvas() {
     let winW = window.innerWidth;
     let winH = window.innerHeight;
+    const isPortrait = winH > winW;
     
-    // 画面幅が基準より小さい場合、Canvasの内部解像度を上げて視野を広げる
+    // 縦持ちなら基準幅900（ズーム）、横持ちなら1600（ワイド）
+    const targetWidth = isPortrait ? 900 : 1600;
+    
     scaleFactor = 1;
-    if (winW < TARGET_GAME_WIDTH) {
-        scaleFactor = TARGET_GAME_WIDTH / winW;
+    if (winW < targetWidth) {
+        scaleFactor = targetWidth / winW;
     }
     
     canvas.width = winW * scaleFactor;
     canvas.height = winH * scaleFactor;
 }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); // 初回実行
+resizeCanvas(); 
 
 let lastTime = 0;
 let startTime = 0;
@@ -237,7 +235,10 @@ let stats = {
     homing: 0, lightning: 0, poison: 0, spinBlade: 0,
     missile: 0, drones: 0, auraScale: 1,
     lifesteal: 0, critChance: 0, infinitePierce: false,
-    missileBlast: 1, gravityAura: false, spreadShot: false
+    missileBlast: 1, gravityAura: false, spreadShot: false,
+    // New Milestones
+    napalm: false, spikeArmor: false, dashNova: false, 
+    splitShot: false, giantSlayer: false
 };
 
 let bullets = [];
@@ -252,21 +253,18 @@ let gasClouds = [];
 let spikeBits = [];
 
 const keys = {};
-// マウス座標はデフォルトで画面中央に
 const mouse = { x: canvas.width/2, y: canvas.height/2 }; 
 
-// --- 入力イベント (スケール補正あり) ---
+// --- Input ---
 window.addEventListener('keydown', e => { keys[e.key] = true; if(e.code === 'Space') dash(); });
 window.addEventListener('keyup', e => keys[e.key] = false);
 window.addEventListener('mousemove', e => { 
-    // マウス座標もスケールに合わせて変換
     mouse.x = e.clientX * scaleFactor; 
     mouse.y = e.clientY * scaleFactor; 
 });
 
 document.getElementById('dash-btn').addEventListener('touchstart', (e) => { e.preventDefault(); dash(); }, {passive: false});
 
-// ジョイスティック処理
 window.addEventListener('touchstart', e => {
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
@@ -326,11 +324,8 @@ function startGame() {
     Sound.init();
     Sound.play('levelup');
     gameActive = true;
-    
-    // 開始時にプレイヤー位置をリセット
     player.x = canvas.width/2;
     player.y = canvas.height/2;
-    
     startTime = Date.now();
     lastTime = performance.now();
     updateSkillList();
@@ -379,7 +374,6 @@ function update(ts) {
     if(dx!==0 || dy!==0) {
         let len = Math.hypot(dx, dy);
         if(len > 1) { dx/=len; dy/=len; }
-        
         player.x += dx * stats.spd * ts;
         player.y += dy * stats.spd * ts;
     }
@@ -469,6 +463,7 @@ function update(ts) {
         });
     }
 
+    // Aura
     if(stats.aura) {
         let r = stats.auraRange * stats.auraScale;
         enemies.forEach(e => { 
@@ -543,11 +538,28 @@ function update(ts) {
                     particles.push({type:'shockwave', x:b.x, y:b.y, size:10, life:15, color:'#f80'});
                     let blastR = 100 * stats.missileBlast;
                     let blastDmg = stats.dmg * 3 * stats.missileBlast;
-                    enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x - b.x, subE.y - b.y) < blastR) damageEnemy(subE, blastDmg); });
+                    enemies.forEach(subE => { 
+                        if(!subE.dead && Math.hypot(subE.x - b.x, subE.y - b.y) < blastR) {
+                            damageEnemy(subE, blastDmg);
+                            // Napalm Effect
+                            if(stats.napalm && Math.random()<0.5) gasClouds.push({x:subE.x, y:subE.y, r:30, life:120, dmg:stats.dmg*0.2});
+                        }
+                    });
                     createParticles(b.x, b.y, '#f00', 10 * stats.missileBlast, 5 * stats.missileBlast);
                     bullets.splice(i, 1); hit = true; break;
                 } else {
-                    damageEnemy(e, stats.dmg); 
+                    damageEnemy(e, stats.dmg);
+                    // Napalm Effect
+                    if(stats.napalm && Math.random()<0.2) gasClouds.push({x:e.x, y:e.y, r:20, life:100, dmg:stats.dmg*0.2});
+                    
+                    if(stats.splitShot) {
+                        // Create 2 mini bullets
+                        for(let k=0; k<2; k++) {
+                            let ang = (Math.random()*Math.PI*2);
+                            bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true});
+                        }
+                    }
+
                     if(stats.lightning > 0) triggerLightning(e, stats.lightning);
                     b.hit.push(e.id);
                     createParticles(b.x, b.y, '#ffffaa', 3, 2); 
@@ -568,17 +580,14 @@ function update(ts) {
         if(Math.hypot(player.x-b.x, player.y-b.y) < player.size + b.size) { takeDamage(10); enemyBullets.splice(i, 1); }
     }
 
-    // Spawn
     let spawnRate = Math.max(3, 25 - level * 1.5); 
     if(Math.random() < (1/spawnRate)*ts) spawnEnemy('random', gameTimeSec);
 
-    // Event
     if(gameTimeSec > 300 && !bossWarningActive && !enemies.some(e=>e.type==='boss')) {
         bossWarningActive = true;
         triggerWarning(true); 
     }
 
-    // Enemy Update & Cleanup
     enemies.forEach(e => {
         if(e.dead) return;
         let dist = Math.hypot(player.x - e.x, player.y - e.y);
@@ -608,6 +617,12 @@ function update(ts) {
         }
 
         if(dist < player.size + e.size) {
+            // Spike Armor
+            if(stats.spikeArmor && Math.random() < 0.2 * ts) {
+                damageEnemy(e, stats.dmg * 0.5);
+                createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
+            }
+
             if(player.class === 'Melee' && player.slamCd <= 0) {
                 let cd = Math.max(10, 60 - stats.rate);
                 player.slamCd = cd; 
@@ -621,10 +636,8 @@ function update(ts) {
         }
     });
     
-    // Dead Enemies Cleanup
     enemies = enemies.filter(e => !e.dead);
 
-    // XP
     if(expOrbs.length > MAX_ORBS) {
         let removed = expOrbs.splice(0, expOrbs.length - MAX_ORBS);
         removed.forEach(o => { if(gameActive) addExp(o.val * 0.5, true); });
@@ -637,7 +650,6 @@ function update(ts) {
         if(d < 20) { addExp(o.val); Sound.play('exp', o.pitch); expOrbs.splice(i, 1); }
     }
 
-    // Particles
     if(particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES);
     for(let i=particles.length-1; i>=0; i--) {
         let p = particles[i];
@@ -647,7 +659,6 @@ function update(ts) {
         if(p.life <= 0) particles.splice(i, 1);
     }
     
-    // Text
     if(texts.length > MAX_TEXTS) texts.splice(0, texts.length - MAX_TEXTS);
     for(let i=texts.length-1; i>=0; i--) {
         texts[i].y -= 1 * ts; texts[i].life -= ts;
@@ -737,12 +748,12 @@ function draw() {
             ctx.fillStyle = '#f80'; ctx.beginPath(); ctx.moveTo(b.x, b.y-8); ctx.lineTo(b.x+6, b.y+6); ctx.lineTo(b.x-6, b.y+6); ctx.fill();
         } else {
             let drawSize = (player.class === 'Sniper' && b.type === 'normal') ? 8 : b.size;
+            if(b.isMini) drawSize = 2;
             ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.arc(b.x, b.y, drawSize, 0, Math.PI*2); ctx.fill(); 
         }
     });
     ctx.fillStyle = '#f0a'; enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
 
-    // Enemies (Unified Colors: Red/Orange/Purple)
     enemies.forEach(e => {
         ctx.fillStyle = e.flash > 0 ? '#fff' : e.color; ctx.beginPath();
         if(e.type === 'boss') {
@@ -792,12 +803,20 @@ function dash() {
     if(isMobile && joyTouchId !== null && (joyMoveX !== 0 || joyMoveY !== 0)) {
         ang = Math.atan2(joyMoveY, joyMoveX);
     } else {
-        // マウス座標との差分
         ang = Math.atan2(mouse.y - player.y, mouse.x - player.x);
     }
     
     player.x += Math.cos(ang) * 200; player.y += Math.sin(ang) * 200;
     createParticles(player.x, player.y, '#fff', 15, 3);
+    
+    // Milestone: Dash Nova
+    if(stats.dashNova) {
+        particles.push({type:'shockwave', x:player.x, y:player.y, size:20, life:20, color:'#0ff'});
+        Sound.play('explode');
+        enemies.forEach(e => {
+            if(Math.hypot(e.x-player.x, e.y-player.y) < 150) damageEnemy(e, stats.dmg * 5);
+        });
+    }
 }
 
 function shoot() {
@@ -820,7 +839,7 @@ function shoot() {
     Sound.play('shoot');
     for(let i=0; i<cnt; i++) {
         let a = ang + (i-(cnt-1)/2)*spread;
-        bullets.push({ type: 'normal', x: player.x, y: player.y, vx: Math.cos(a)*stats.bulletSpeed, vy: Math.sin(a)*stats.bulletSpeed, size: 4, hit: [], pierce: stats.pierce });
+        bullets.push({ type: 'normal', x: player.x, y: player.y, vx: Math.cos(a)*stats.bulletSpeed, vy: Math.sin(a)*stats.bulletSpeed, size: 4, hit: [], pierce: stats.pierce, isMini: false });
     }
 }
 
@@ -860,6 +879,9 @@ function damageEnemy(e, dmg) {
     if(e.dead) return; 
     let isCrit = false;
     if(Math.random() < stats.critChance) { dmg *= 3; isCrit = true; }
+    
+    // Giant Slayer
+    if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
 
     e.hp -= dmg; e.flash = 5; createParticles(e.x, e.y, '#fff', 2, 2); Sound.play('hit');
     texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
@@ -917,32 +939,45 @@ function showMilestone() {
     c.innerHTML = ''; m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "禁断の力 (Lv"+level+")";
 
-    let opts = [];
+    let pool = [];
     if(player.class === 'Assault') {
-        opts = [
+        pool = [
             {t:"🔥 バレット・ストーム", d:"弾数+2 / 拡散ショット", f:()=>{stats.multi+=2; stats.spreadShot=true;}},
             {t:"☢️ 核弾頭ミサイル", d:"爆発範囲・威力 2倍", f:()=>{stats.missileBlast+=1; stats.missile++;}},
-            {t:"🏎️ オーバードライブ", d:"連射限界突破 / 移動UP", f:()=>{stats.rate-=3; stats.spd+=3;}}
+            {t:"🏎️ オーバードライブ", d:"連射限界突破 / 移動UP", f:()=>{stats.rate-=3; stats.spd+=3;}},
+            {t:"☣️ ナパーム弾", d:"弾が毒ガスを撒き散らす", f:()=>{stats.napalm=true;}},
+            {t:"🔫 ダブル・タップ", d:"弾数+1 / 連射UP", f:()=>{stats.multi++; stats.rate-=1;}},
+            {t:"💣 ヘビー・バレル", d:"威力・サイズ大 / 連射ダウン", f:()=>{stats.dmg+=30; stats.bulletSpeed*=0.8; stats.rate+=2;}}
         ];
     } else if(player.class === 'Melee') {
-        opts = [
+        pool = [
             {t:"🦍 ギガント・プレス", d:"サイズ1.5倍 / 体当たり2倍", f:()=>{player.size*=1.5; player.maxHp+=200; player.hp+=200;}},
             {t:"🧛 ブラッド・ラスト", d:"敵撃破でHP+3回復", f:()=>{stats.lifesteal+=3;}},
-            {t:"🪐 グラビティ・オーラ", d:"オーラが敵を吸い寄せる", f:()=>{stats.gravityAura=true; stats.auraScale+=0.3;}}
+            {t:"🪐 グラビティ・オーラ", d:"オーラが敵を吸い寄せる", f:()=>{stats.gravityAura=true; stats.auraScale+=0.3;}},
+            {t:"🌵 スパイク・アーマー", d:"接触した敵にダメージ", f:()=>{stats.spikeArmor=true;}},
+            {t:"🛡️ アイアン・ウィル", d:"HP+500 / リジェネ+10", f:()=>{player.maxHp+=500; player.hp+=500; stats.regen+=10;}},
+            {t:"💥 ダッシュ・インパクト", d:"ダッシュ時に大爆発", f:()=>{stats.dashNova=true;}}
         ];
     } else if(player.class === 'Sniper') {
-        opts = [
+        pool = [
             {t:"⚡ レールガン", d:"弾速2倍 / 判定超巨大化", f:()=>{stats.bulletSpeed*=2; player.class='Sniper';}},
             {t:"🐝 ハンター・スウォーム", d:"ドローン+2 / 高速化", f:()=>{stats.drones+=2;}},
-            {t:"👁️ デッド・アイ", d:"20%確率で3倍ダメージ", f:()=>{stats.critChance+=0.2;}}
+            {t:"👁️ デッド・アイ", d:"20%確率で3倍ダメージ", f:()=>{stats.critChance+=0.2;}},
+            {t:"🗡️ アサシン", d:"移動+3 / クリティカル+20%", f:()=>{stats.spd+=3; stats.critChance+=0.2;}},
+            {t:"👹 アンチ・マテリアル", d:"サイズ+50% / 対ボス+50%", f:()=>{stats.giantSlayer=true;}},
+            {t:"🔃 スプリット・ショット", d:"弾が命中時に分裂する", f:()=>{stats.splitShot=true;}}
         ];
     } else {
-        opts = [
+        pool = [
             {t:"💪 基礎力強化", d:"全ステータス大アップ", f:()=>{stats.dmg+=30; stats.spd+=2; stats.hp+=100;}},
             {t:"📦 物資補給", d:"HP全回復", f:()=>{player.hp=player.maxHp;}},
             {t:"🎲 ギャンブル", d:"クリティカル率+10%", f:()=>{stats.critChance+=0.1;}}
         ];
     }
+
+    // Shuffle and pick 3
+    pool.sort(() => Math.random() - 0.5);
+    let opts = pool.slice(0, 3);
 
     opts.forEach(o => {
         let el = document.createElement('div'); el.className='card milestone';
