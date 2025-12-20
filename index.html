@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.1.2: God Buff Update</title>
+    <title>Evo Lite v3.1.3: Rare & Percent Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -45,9 +45,18 @@
         .card-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; max-height: 80vh; overflow-y: auto; padding: 10px; }
         .card { width: 140px; background: #222; border: 1px solid #444; padding: 15px; color: white; cursor: pointer; text-align: center; transition: 0.1s; position: relative; overflow: hidden; border-radius: 8px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
         .card:hover, .card:active { background: #333; border-color: #0ff; transform: translateY(-5px) scale(1.05); box-shadow: 0 0 20px rgba(0,255,255,0.4); }
+        
+        /* Card Types */
         .card.special { border-color: #ff0; background: #332200; } 
         .card.milestone { border-color: #f0f; background: #220022; }
         .card.milestone:hover { border-color: #fff; background: #440044; box-shadow: 0 0 30px rgba(255,0,255,0.6); }
+        
+        /* Rare Upgrade Style */
+        .card.rare { border-color: #ffd700; background: linear-gradient(135deg, #443300, #221100); box-shadow: 0 0 25px rgba(255, 215, 0, 0.6); animation: glow 2s infinite alternate; }
+        .card.rare h3 { color: #ffd700; text-shadow: 0 0 5px #ffaa00; }
+        .card.rare p { color: #ffebcd; font-weight: bold; }
+        @keyframes glow { from { box-shadow: 0 0 10px #b8860b; } to { box-shadow: 0 0 25px #ffd700; } }
+
         .card.singularity { border-color: #000; background: #fff; color:#000; box-shadow: 0 0 30px #fff; }
         .card.singularity h3 { color: #000; }
         .card.singularity p { color: #333; }
@@ -105,7 +114,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.1.2 GOD BUFF UPDATE</h2>
+    <h2 style="color:#ffd700; font-weight:normal; font-size:16px;">v3.1.3 RARE & PERCENT UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -1847,56 +1856,83 @@ function showUpgrade() {
     c.innerHTML = ''; m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "レベルアップ！";
 
-    const getTxt = (key, name) => stats[key] === 0 ? name+"を取得" : name+"を強化(Lv"+(stats[key]+1)+")";
+    // ★ Upgrade Logic Refactored to support Rare & Percent stats
+    const createOpt = (id, icon, title, val, unit, applyFunc, descGen) => {
+        return { id: id, icon: icon, title: title, val: val, unit: unit, func: applyFunc, desc: descGen };
+    };
 
-    let allOpts = [
-        {id:'dmg', t:"💪 攻撃力UP", d:"ダメージ +15", f:()=>stats.dmg+=15},
-        {id:'spd', t:"👟 移動速度UP", d:"移動速度 +2", f:()=>stats.spd+=2},
-        {id:'rate', t:"⚡ 連射速度UP", d:"連射/CD短縮", f:()=>stats.rate=Math.max(4, stats.rate-3)}, 
-        {id:'multi', t: player.class==='Melee' ? "⚔️ ブレード+" : "🔫 マルチ/盾", d: player.class==='Melee' ? "回転刃 +1" : "弾数/シールド +1", f:()=>stats.multi++},
-        {id:'pierce', t:"🏹 貫通弾", d:"貫通数 +1", f:()=>stats.pierce++},
-        {id:'regen', t:"❤️ リジェネ強化", d:"自動回復 +2/s", f:()=>stats.regen+=2},
-        {id:'magnet', t:"🧲 マグネット", d:"XP回収範囲拡大", f:()=>stats.magnet+=50},
-        
-        {id:'spin', t:"⚔️ 回転刃", d:getTxt('spinBlade','回転刃'), f:()=>stats.spinBlade++},
-        {id:'homing', t:"🎯 ホーミング", d:getTxt('homing','追尾弾'), f:()=>stats.homing++},
-        {id:'lightning', t:"🌩️ ライトニング", d:getTxt('lightning','連鎖雷'), f:()=>stats.lightning++},
-        {id:'poison', t:"☠️ 毒ガス", d:getTxt('poison','毒霧散布'), f:()=>stats.poison++},
-        {id:'chakram', t:"🥏 チャクラム", d:getTxt('chakram','跳弾円盤'), f:()=>stats.chakram++}
-    ];
+    let pool = [];
 
+    // Basic Stats (Fixed)
+    pool.push(createOpt('dmg', '💪', '攻撃力', 15, '', (v)=>stats.dmg+=v, (v)=>`ダメージ +${v}`));
+    pool.push(createOpt('hp', '❤️', 'HP強化', 50, '', (v)=>{player.maxHp+=v; player.hp+=v;}, (v)=>`最大HP +${v}`));
+    pool.push(createOpt('spd', '👟', '移動速度', 2, '', (v)=>stats.spd+=v, (v)=>`移動速度 +${v}`));
+    pool.push(createOpt('rate', '⚡', '連射速度', 3, '', (v)=>stats.rate=Math.max(2, stats.rate-v), (v)=>`連射/CD短縮`)); // Fixed behavior
+    
+    // Percentage Stats (Scaling)
+    pool.push(createOpt('dmg_p', '💪', '攻撃倍率', 15, '%', (v)=>stats.dmg=Math.floor(stats.dmg*(1+v/100)), (v)=>`ダメージ +${v}%`));
+    pool.push(createOpt('rate_p', '⏩', 'ヘイスト', 10, '%', (v)=>stats.rate=Math.max(2, stats.rate*(1-v/100)), (v)=>`攻撃速度 +${v}%`));
+
+    // Special Stats
+    pool.push(createOpt('multi', player.class==='Melee'?'⚔️':'🔫', player.class==='Melee'?'ブレード+':'マルチ/盾', 1, '', (v)=>stats.multi+=v, (v)=>player.class==='Melee'?`回転刃 +${v}`:`発射数 +${v}`));
+    pool.push(createOpt('pierce', '🏹', '貫通弾', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
+    pool.push(createOpt('regen', '💖', 'リジェネ', 2, '', (v)=>stats.regen+=v, (v)=>`回復 +${v}/s`));
+    pool.push(createOpt('magnet', '🧲', 'マグネット', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
+
+    // Class Specifics (Fixed - No Rare Multiplier usually, but we can boost them)
     if(player.class === 'Melee' || player.class === 'Guardian') {
-        allOpts = allOpts.filter(o => o.id !== 'pierce');
-        allOpts.push({id:'armor', t:"🛡️ アーマー", d:"被ダメージ -2", f:()=>stats.armor+=2});
-    }
-
-    if(player.class === 'Assault') allOpts.push({id:'missile', t:"🚀 ミサイル", d:getTxt('missile','追尾ミサイル'), f:()=>stats.missile++, special:true});
-    if(player.class === 'Sniper') allOpts.push({id:'drones', t:"🛰️ ドローン", d:getTxt('drones','攻撃ビット'), f:()=>stats.drones++, special:true});
-    if(player.class === 'Melee') {
-        allOpts.push({id:'auraScale', t:"🛡️ オーラ拡大", d:"オーラ範囲 +20%", f:()=>stats.auraScale+=0.2, special:true});
+        pool = pool.filter(o => o.id !== 'pierce');
+        pool.push(createOpt('armor', '🛡️', 'アーマー', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメ -${v}`));
     }
     
-    // 【変更】スナイパー以外は全員「超回復」が出るように
-    if(player.class !== 'Sniper') {
-        allOpts.push({id:'superRegen', t:"💖 超回復", d:"回復 +10/s", f:()=>stats.regen+=10, special:true});
+    // Skill Unlocks (Fixed Logic)
+    let unlocks = [
+        {id:'spin', t:"⚔️ 回転刃", k:'spinBlade'}, {id:'homing', t:"🎯 ホーミング", k:'homing'},
+        {id:'lightning', t:"🌩️ ライトニング", k:'lightning'}, {id:'poison', t:"☠️ 毒ガス", k:'poison'},
+        {id:'chakram', t:"🥏 チャクラム", k:'chakram'}
+    ];
+    unlocks.forEach(u => {
+        pool.push(createOpt(u.id, u.t.split(' ')[0], u.t.split(' ')[1], 1, '', (v)=>stats[u.k]+=v, (v)=>stats[u.k]===0?`${u.t.split(' ')[1]}を取得`:`${u.t.split(' ')[1]} Lv${stats[u.k]+1}`));
+    });
+
+    if(player.class === 'Assault') pool.push(createOpt('missile', '🚀', 'ミサイル', 1, '', (v)=>stats.missile+=v, (v)=>`ミサイル Lv${stats.missile+1}`));
+    if(player.class === 'Sniper') pool.push(createOpt('drones', '🛰️', 'ドローン', 1, '', (v)=>stats.drones+=v, (v)=>`ドローン +${v}`));
+    if(player.class === 'Melee') pool.push(createOpt('auraScale', '🛡️', 'オーラ拡大', 0.2, '', (v)=>stats.auraScale+=v, (v)=>`範囲 +${(v*100).toFixed(0)}%`));
+
+    // Selection Logic
+    let choices = [];
+    let safety = 0;
+    while(choices.length < 3 && safety < 100) {
+        let base = pool[Math.floor(Math.random() * pool.length)];
+        if(choices.some(c => c.id === base.id)) { safety++; continue; }
+        
+        // Clone for modifications
+        let opt = { ...base }; 
+        
+        // ★ RARE ROLL Logic (10%)
+        if(Math.random() < 0.1) {
+            opt.isRare = true;
+            let mult = 2; // Double effect
+            if(opt.id === 'hp') mult = 3; // Triple for HP
+            if(opt.id === 'multi') mult = 2; 
+
+            opt.val = Math.floor(opt.val * mult);
+            if(opt.id === 'auraScale') opt.val = parseFloat((base.val * 1.5).toFixed(1)); // Special fix float
+        }
+
+        choices.push(opt);
     }
 
-    let validOpts = allOpts.filter(o => true);
-
-    let p = []; 
-    let saftey = 0;
-    while(p.length < 3 && p.length < validOpts.length && saftey < 50) { 
-        let r = validOpts[Math.floor(Math.random()*validOpts.length)]; 
-        if(!p.includes(r)) p.push(r); 
-        saftey++;
-    }
-
-    p.forEach(o => {
-        let el = document.createElement('div'); el.className='card';
-        if(o.special) el.classList.add('special');
-        let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-        el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.d}</p>`;
-        el.onclick = () => { o.f(); resume(); };
+    choices.forEach(o => {
+        let el = document.createElement('div'); 
+        el.className = 'card';
+        if(o.isRare) el.classList.add('rare');
+        
+        let title = o.isRare ? `✨ ${o.title}` : o.title;
+        let desc = o.desc(o.val);
+        
+        el.innerHTML = `<span class="icon">${o.icon}</span><h3>${title}</h3><p>${desc}</p>`;
+        el.onclick = () => { o.func(o.val); resume(); };
         c.appendChild(el);
     });
 }
