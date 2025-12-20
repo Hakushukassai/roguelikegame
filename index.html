@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.4.1: Optimization Fix</title>
+    <title>Evo Lite v2.4.2: Fixed & Optimized</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.4.1 OPTIMIZED</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.4.2 FIXED</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -103,10 +103,10 @@
 <script>
 // --- Config ---
 const MAX_ENEMIES = 800;
-const MAX_PARTICLES = 400; // Reduced for safety
+const MAX_PARTICLES = 400; 
 const MAX_ORBS = 300;
 const MAX_TEXTS = 40;
-const MAX_SOUND_CONCURRENT = 8; // Tighter sound limit
+const MAX_SOUND_CONCURRENT = 8; 
 
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if(isMobile) {
@@ -130,7 +130,6 @@ const Sound = {
         if(!actx || activeSoundCount > MAX_SOUND_CONCURRENT) return;
         if(actx.state === 'suspended') actx.resume();
         const now = actx.currentTime;
-        // Limit repetition of same sound
         if(lastSoundTime[type] && now - lastSoundTime[type] < 0.08) return;
         lastSoundTime[type] = now;
         activeSoundCount++;
@@ -151,6 +150,10 @@ const Sound = {
         } else if(type === 'hit') {
             osc.type='square'; osc.frequency.setValueAtTime(100 * pitch, now); gain.gain.setValueAtTime(0.05, now);
             gain.gain.linearRampToValueAtTime(0, now+0.05); osc.start(now); osc.stop(now+0.05);
+        } else if(type === 'dash') {
+            osc.type='triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(200, now+0.2);
+            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
+            osc.start(now); osc.stop(now+0.2);
         } else if(type === 'laser') {
             osc.type='sawtooth'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(200, now+0.5);
             gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
@@ -775,6 +778,76 @@ function update(ts) {
         if(texts[i].life<=0) texts.splice(i, 1);
     }
 }
+
+// --- MISSING FUNCTIONS ADDED HERE ---
+
+function shoot() {
+    let targetX = mouse.x;
+    let targetY = mouse.y;
+    
+    // Auto aim closest if using controller/touch and no clear direction
+    // For simplicity, we just target mouse coordinates.
+    
+    let angle = Math.atan2(targetY - player.y, targetX - player.x);
+    let count = stats.multi;
+    if(player.class === 'Sniper') count = 1; // Sniper defaults to 1 big shot (logic in stats object handles multi=1 but here for safety)
+
+    let spread = 0.1; // radians
+    let startAngle = angle - (spread * (count-1)) / 2;
+
+    for(let i=0; i<count; i++) {
+        let currentAngle = startAngle + spread * i;
+        let vx = Math.cos(currentAngle) * stats.bulletSpeed;
+        let vy = Math.sin(currentAngle) * stats.bulletSpeed;
+        
+        bullets.push({
+            type: 'normal',
+            x: player.x,
+            y: player.y,
+            vx: vx,
+            vy: vy,
+            size: 5,
+            color: '#fff',
+            hit: [],
+            pierce: stats.pierce,
+            isMini: false
+        });
+    }
+    Sound.play('shoot', 1.0 + Math.random()*0.2);
+}
+
+function dash() {
+    if(player.dashCd > 0) return;
+    player.dashCd = player.maxDashCd;
+    player.invincible = 30; // 0.5s invincible
+    
+    let dx = 0, dy = 0;
+    if(keys['w'] || keys['ArrowUp']) dy = -1;
+    if(keys['s'] || keys['ArrowDown']) dy = 1;
+    if(keys['a'] || keys['ArrowLeft']) dx = -1;
+    if(keys['d'] || keys['ArrowRight']) dx = 1;
+    
+    if(joyTouchId !== null) { dx = joyMoveX; dy = joyMoveY; }
+    
+    // Default dash right if no input
+    if(dx === 0 && dy === 0) dx = 1; 
+
+    let len = Math.hypot(dx, dy);
+    if(len > 0) { dx /= len; dy /= len; }
+
+    // Teleport dash
+    player.x += dx * 100;
+    player.y += dy * 100;
+    
+    // Bound check
+    player.x = Math.max(15, Math.min(canvas.width-15, player.x));
+    player.y = Math.max(15, Math.min(canvas.height-15, player.y));
+    
+    createParticles(player.x, player.y, '#fff', 10, 2);
+    Sound.play('dash'); 
+}
+
+// ------------------------------------
 
 function fireMissile() {
     Sound.play('missile');
