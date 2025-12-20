@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.5.4: Zero Returns</title>
+    <title>Evo Lite v2.6.0: Singularity</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
         
+        /* UI Layers */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         #top-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); text-align: center; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); width: 80%; max-width: 600px; }
         #xp-bg { width: 100%; height: 12px; background: #222; margin-top: 8px; border: 1px solid #555; border-radius: 6px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.5);}
@@ -21,6 +22,7 @@
         @keyframes pulse { 0%{opacity:0.5;} 50%{opacity:1;} 100%{opacity:0.5;} }
         #score-box { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 16px; font-weight: bold; text-shadow: 0 0 5px #000; }
         
+        /* Mobile Controls */
         #mobile-controls { display: none; position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; }
         #joystick-zone { position: absolute; width: 100px; height: 100px; border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; transform: translate(-50%, -50%); pointer-events: none; }
         #joystick-knob { position: absolute; width: 40px; height: 40px; background: rgba(0, 255, 255, 0.5); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
@@ -32,6 +34,7 @@
         }
         #dash-btn:active { background: rgba(255, 255, 0, 0.6); transform: scale(0.95); }
 
+        /* Overlays */
         #warning-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, transparent 40%, rgba(200,0,0,0.7) 100%); animation: pulseRed 0.2s infinite alternate; justify-content: center; align-items: center; flex-direction: column; z-index: 10; }
         #warning-text { color: #ff0000; font-size: 60px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 0 20px red; transform: scale(1); animation: textZoom 0.1s infinite alternate; text-align: center; }
         @keyframes pulseRed { from { opacity: 0.2; } to { opacity: 0.8; } }
@@ -45,16 +48,24 @@
         .card.special { border-color: #ff0; background: #332200; } 
         .card.milestone { border-color: #f0f; background: #220022; }
         .card.milestone:hover { border-color: #fff; background: #440044; box-shadow: 0 0 30px rgba(255,0,255,0.6); }
+        .card.singularity { border-color: #000; background: #fff; color:#000; box-shadow: 0 0 30px #fff; }
+        .card.singularity h3 { color: #000; }
+        .card.singularity p { color: #333; }
+        
         .card .icon { font-size: 30px; margin-bottom: 5px; display: block; }
         .card h3 { color: #0ff; margin: 5px 0; font-size: 14px; }
         .card.special h3 { color: #ff0; }
         .card.milestone h3 { color: #f0f; }
         .card p { font-size: 11px; color: #ccc; line-height: 1.3; }
+        
         button { padding: 20px 50px; font-size: 24px; cursor: pointer; background: #fff; border: none; font-weight: bold; margin-top: 30px; border-radius: 6px; transition: 0.2s; box-shadow: 0 0 10px #fff; }
         button:active { background: #0ff; box-shadow: 0 0 20px #0ff; transform: scale(0.95); }
+        
+        .singularity-mode #gameCanvas { filter: invert(1) hue-rotate(180deg); }
+        .singularity-mode #ui-layer { filter: invert(0); } /* Keep UI normal */
     </style>
 </head>
-<body>
+<body id="main-body">
 
 <canvas id="gameCanvas"></canvas>
 
@@ -89,7 +100,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.5.4 ZERO RETURNS</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.6.0 SINGULARITY</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -102,10 +113,10 @@
 
 <script>
 // --- Config ---
-const MAX_ENEMIES = 800;
-const MAX_PARTICLES = 400; 
-const MAX_ORBS = 300;
-const MAX_TEXTS = 40;
+const MAX_ENEMIES = 1000;
+const MAX_PARTICLES = 500; 
+const MAX_ORBS = 400;
+const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 32; 
 
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -152,13 +163,16 @@ const Sound = {
         if(Sound.activeEndTimes.length >= MAX_SOUND_CONCURRENT) return;
 
         const now = actx.currentTime;
-        if(lastSoundTime[type] && now - lastSoundTime[type] < 0.06) return;
+        if(lastSoundTime[type] && now - lastSoundTime[type] < 0.05) return;
         lastSoundTime[type] = now;
 
         const osc = actx.createOscillator();
         const gain = actx.createGain();
         osc.connect(gain);
         gain.connect(actx.destination);
+
+        // Pitch shift for Singularity Mode
+        if(level >= 100) pitch *= 0.8;
 
         let duration = 0.1;
         if(type === 'shoot') {
@@ -226,6 +240,7 @@ let bossWarningTimer = 0;
 let bossWarningActive = false; 
 let earthquakeTimer = 0;
 let electroFenceTimer = 0; 
+let singularityMode = false;
 
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
@@ -248,7 +263,9 @@ let stats = {
     missileBlast: 1, gravityAura: false, spreadShot: false,
     napalm: false, spikeArmor: false, dashNova: false, 
     splitShot: false, giantSlayer: false,
-    armor: 0, // NEW: Vanguard Armor
+    armor: 0, 
+    // ★ New Sniper Stats
+    knockback: 0, shrapnel: false, 
     
     // Forbidden Skills (Assault)
     shotExplode: false, shotBounce: false, doubleShot: false, 
@@ -368,6 +385,13 @@ function loop(timestamp) {
 function update(ts) {
     let gameTimeSec = (Date.now() - startTime) / 1000;
     
+    // Check Singularity (Lv100)
+    if(level >= 100 && !singularityMode) {
+        singularityMode = true;
+        document.body.classList.add('singularity-mode');
+        Sound.play('milestone');
+    }
+
     let m = Math.floor(gameTimeSec/60);
     let s = Math.floor(gameTimeSec%60);
     document.getElementById('disp-time').innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
@@ -399,7 +423,6 @@ function update(ts) {
             particles.push({type:'shockwave', x:player.x, y:player.y, size:400, life:30, color:'#f80'});
         }
     }
-    // New: Electro Fence
     if(stats.electroFence) {
         electroFenceTimer -= ts;
         if(electroFenceTimer <= 0) {
@@ -680,7 +703,14 @@ function update(ts) {
                 } else {
                     damageEnemy(e, stats.dmg);
                     
-                    if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; // Sniper Skill
+                    // ★ Sniper Knockback
+                    if(stats.knockback > 0 && !b.isMini) {
+                        let ang = Math.atan2(e.y - player.y, e.x - player.x);
+                        e.x += Math.cos(ang) * stats.knockback * 20;
+                        e.y += Math.sin(ang) * stats.knockback * 20;
+                    }
+
+                    if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; 
                     if(stats.shotExplode) { 
                         Sound.play('explode', 2.0);
                         enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < 50) damageEnemy(subE, stats.dmg*0.5); });
@@ -725,11 +755,11 @@ function update(ts) {
             let progress = Math.min(1.0, (level - 5) / 25);
             hordeMult = 2.0 + progress; 
         }
+        if (singularityMode) hordeMult *= 3.0;
 
-        // ★ Rush Mode: If HP is high, spawn more enemies!
         let spawnProb = (hordeMult / spawnDenom) * ts;
         if(player.hp >= player.maxHp * 0.9) {
-            spawnProb *= 3.0; // 3x Spawn Rate when healthy
+            spawnProb *= 3.0; 
         }
 
         if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
@@ -962,7 +992,6 @@ function createLightningEffect(x1, y1, x2, y2) {
 function takeDamage(dmg) {
     if(player.invincible > 0) return;
     
-    // ★ Armor Calculation (Vanguard Fix)
     dmg = Math.max(1, dmg - stats.armor);
 
     player.hp -= dmg; 
@@ -1119,7 +1148,9 @@ function spawnEnemy(mode, time) {
 function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0 };
     
+    // ★ Dynamic HP Scaling: Base * (1.1 ^ Level)
     let hpMult = Math.pow(1.10, level - 1); 
+    if(singularityMode) hpMult *= 2.0;
 
     if(type === 'boss') { 
         e.hp = 3000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
@@ -1135,6 +1166,8 @@ function createEnemy(type, x, y) {
     else { e.hp = 15 * hpMult; e.maxHp = e.hp; e.size = 14; e.color = '#ff3333'; e.speed = 2.0 + (level * 0.01) + Math.random(); e.ai='normal'; }
     
     if(!e.dmg) e.dmg = 10 + Math.floor(level * 1.5);
+    
+    if(singularityMode) { e.color = '#000000'; e.speed *= 1.2; }
 
     enemies.push(e);
 }
@@ -1178,6 +1211,14 @@ function damageEnemy(e, dmg) {
              particles.push({type:'shockwave', x:e.x, y:e.y, size:range, life:10, color:'#0ff'});
         }
 
+        // ★ Sniper Shrapnel Effect
+        if(stats.shrapnel) {
+            for(let i=0; i<3; i++) {
+                let ang = Math.random() * Math.PI * 2;
+                bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*12, vy:Math.sin(ang)*12, size:3, hit:[e.id], pierce:1, isMini:true});
+            }
+        }
+
         if(stats.necromancer) {
             bullets.push({type: 'spirit', x: e.x, y: e.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
         }
@@ -1187,12 +1228,11 @@ function damageEnemy(e, dmg) {
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
 
-        let baseVal = 25; 
-        if(level >= 45) baseVal = 20000;
-        else if(level >= 35) baseVal = 6000;
-        else if(level >= 25) baseVal = 1500;
-        else if(level >= 15) baseVal = 300;
-        else if(level >= 5) baseVal = 80;
+        // ★ Dynamic XP Drop Calculation (Fix for late game stagnation)
+        // Base Drop increases linearly with level, ensuring XP keeps up
+        let levelScaler = 1 + (level * 0.5); 
+        if(singularityMode) levelScaler *= 2;
+        let baseVal = 25 * levelScaler;
 
         let val = baseVal;
         if(e.type === 'boss') val = baseVal * 50;
@@ -1216,7 +1256,8 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
-        nextExp = Math.floor(nextExp * 1.25) + 100; 
+        // ★ XP Curve Adjustment: Less steep geometric growth to prevent hitting a wall
+        nextExp = Math.floor(nextExp * 1.15) + 500; 
         Sound.play('levelup'); updateUI(); 
         
         if(level === 5) showEvo(); 
@@ -1236,7 +1277,7 @@ function showMilestone() {
     // Common Unique
     let pool = [
         {t:"⚡ オメガ・レーザー", d:"3秒ごとに画面を薙ぎ払う", f:()=>{stats.omegaLaser=true;}},
-        {t:"❄️ アブソリュート・ゼロ", d:"周囲の敵を凍結停止させる", f:()=>{stats.absoluteZero=true;}}, // ★ Revived
+        {t:"❄️ アブソリュート・ゼロ", d:"周囲の敵を凍結停止させる", f:()=>{stats.absoluteZero=true;}}, 
         {t:"💀 ネクロマンサー", d:"敵撃破時に追尾怨霊を召喚", f:()=>{stats.necromancer=true;}},
         {t:"🩸 血の契約", d:"HPが1になる / 攻撃力5倍", f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;}},
         {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間 3倍", f:()=>{player.invincible=60;}}
@@ -1275,6 +1316,19 @@ function showMilestone() {
     pool.sort(() => Math.random() - 0.5);
     let opts = pool.slice(0, 3);
 
+    // ★ Singularity Option (Limit Break) for Lv 100+
+    if(level >= 100) {
+        let singOpt = {t:"🌌 限界突破 (SINGULARITY)", d:"全ステータス +20%UP", f:()=>{
+            stats.dmg*=1.2; stats.spd+=1; stats.rate*=0.9; stats.bulletSpeed*=1.2; player.maxHp*=1.2; player.hp=player.maxHp;
+        }};
+        
+        let el = document.createElement('div'); el.className='card singularity';
+        el.innerHTML = `<span class="icon">🌌</span><h3>${singOpt.t}</h3><p>${singOpt.d}</p>`;
+        el.onclick = () => { singOpt.f(); resume(); };
+        c.appendChild(el);
+        opts = opts.slice(0, 2); // Make room
+    }
+
     opts.forEach(o => {
         let el = document.createElement('div'); el.className='card milestone';
         let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
@@ -1308,7 +1362,6 @@ function showUpgrade() {
         {id:'chakram', t:"🥏 チャクラム", d:getTxt('chakram','跳弾円盤'), f:()=>stats.chakram++}
     ];
 
-    // ★ Fix for Vanguard (Melee) -> Remove Pierce, Add Armor
     if(player.class === 'Melee') {
         allOpts = allOpts.filter(o => o.id !== 'pierce');
         allOpts.push({id:'armor', t:"🛡️ アーマー", d:"被ダメージ -2", f:()=>stats.armor+=2});
@@ -1350,11 +1403,13 @@ function showEvo() {
     let evos = [
         {t:"🔫 アサルト", d:"連射特化: 🚀ミサイル解禁", f:()=>{player.class="Assault"; player.color="#00ffff"; stats.rate=6; stats.dmg+=2;}},
         {t:"🛡️ ヴァンガード", d:"近接: 💥体当たり & 🛡️シールド", f:()=>{player.class="Melee"; player.color="#ff3333"; stats.aura=true; stats.auraRange=130; stats.spd+=2; player.maxHp+=200; player.hp+=200;}},
-        {t:"🔭 スナイパー", d:"遠距離: 🛰️ドローン & 無限貫通", f:()=>{
+        // ★ Buffed Sniper: Added Shrapnel & Knockback
+        {t:"🔭 スナイパー", d:"遠距離: 💥破片 & 🔙ノックバック", f:()=>{
             player.class="Sniper"; player.color="#ffff00"; 
-            stats.rate=35; stats.dmg=200; stats.pierce=999; stats.bulletSpeed=30; stats.multi=1;
+            stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=1;
             stats.drones+=1; 
-            stats.infinitePierce=true; 
+            stats.shrapnel=true; // New
+            stats.knockback=1; // New
         }}
     ];
 
@@ -1390,6 +1445,8 @@ function updateUI() {
 function updateSkillList() {
     let list = document.getElementById('skill-list');
     let html = "";
+    if(singularityMode) html += `<div style="color:#000; text-shadow:0 0 5px #fff; font-weight:bold;">🌌 SINGULARITY MODE</div>`;
+
     if(stats.omegaLaser) html += `<div style="color:#f0f">⚡ OMEGA LASER</div>`;
     if(stats.absoluteZero) html += `<div style="color:#0ff">❄️ ZERO AURA</div>`;
     if(stats.titan) html += `<div style="color:#f00">🦍 TITAN</div>`;
@@ -1400,6 +1457,7 @@ function updateSkillList() {
     if(stats.chainBurst) html += `<div style="color:#0ff">💥 CHAIN BURST</div>`;
     if(stats.electroFence) html += `<div style="color:#0ff">⚡ ELECTRO FENCE</div>`;
     if(stats.armor > 0) html += `<div style="color:#8f8">🛡️ ARMOR +${stats.armor}</div>`;
+    if(stats.shrapnel) html += `<div style="color:#ff0">💥 SHRAPNEL</div>`;
 
     if(stats.missile > 0) html += `<div style="color:#fa0">🚀 ミサイル Lv${stats.missile}</div>`;
     if(stats.drones > 0) html += `<div style="color:#ff0">🛰️ ドローン x${stats.drones}</div>`;
