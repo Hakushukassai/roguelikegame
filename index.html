@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.5.2: XP Boost & Rush</title>
+    <title>Evo Lite v2.5.3: Vanguard Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.5.2 XP BOOST</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.5.3 VANGUARD FIX</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -248,6 +248,7 @@ let stats = {
     missileBlast: 1, gravityAura: false, spreadShot: false,
     napalm: false, spikeArmor: false, dashNova: false, 
     splitShot: false, giantSlayer: false,
+    armor: 0, // NEW: Vanguard Armor
     
     // Forbidden Skills (Assault)
     shotExplode: false, shotBounce: false, doubleShot: false, 
@@ -390,6 +391,7 @@ function update(ts) {
             particles.push({type:'shockwave', x:player.x, y:player.y, size:400, life:30, color:'#f80'});
         }
     }
+    // New: Electro Fence
     if(stats.electroFence) {
         electroFenceTimer -= ts;
         if(electroFenceTimer <= 0) {
@@ -951,6 +953,10 @@ function createLightningEffect(x1, y1, x2, y2) {
 
 function takeDamage(dmg) {
     if(player.invincible > 0) return;
+    
+    // ★ Armor Calculation (Vanguard Fix)
+    dmg = Math.max(1, dmg - stats.armor);
+
     player.hp -= dmg; 
     player.invincible = 20; 
     screenShake = 15;
@@ -1173,7 +1179,6 @@ function damageEnemy(e, dmg) {
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
 
-        // ★ XP Boost Logic: 15, 25, 35, 45 steps
         let baseVal = 25; 
         if(level >= 45) baseVal = 20000;
         else if(level >= 35) baseVal = 6000;
@@ -1194,7 +1199,6 @@ function damageEnemy(e, dmg) {
         
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
-        // Always drop XP if limit not reached
         if(expOrbs.length < MAX_ORBS) expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
     }
 }
@@ -1283,7 +1287,7 @@ function showUpgrade() {
         {id:'dmg', t:"💪 攻撃力UP", d:"ダメージ +15", f:()=>stats.dmg+=15},
         {id:'spd', t:"👟 移動速度UP", d:"移動速度 +2", f:()=>stats.spd+=2},
         {id:'rate', t:"⚡ 連射速度UP", d:"連射/CD短縮", f:()=>stats.rate=Math.max(4, stats.rate-3)}, 
-        {id:'multi', t:"🔫 マルチ/盾", d:"弾数/シールド +1", f:()=>stats.multi++},
+        {id:'multi', t: player.class==='Melee' ? "⚔️ ブレード+" : "🔫 マルチ/盾", d: player.class==='Melee' ? "回転刃 +1" : "弾数/シールド +1", f:()=>stats.multi++},
         {id:'pierce', t:"🏹 貫通弾", d:"貫通数 +1", f:()=>stats.pierce++},
         {id:'regen', t:"❤️ リジェネ強化", d:"自動回復 +2/s", f:()=>stats.regen+=2},
         {id:'magnet', t:"🧲 マグネット", d:"XP回収範囲拡大", f:()=>stats.magnet+=50},
@@ -1294,6 +1298,12 @@ function showUpgrade() {
         {id:'poison', t:"☠️ 毒ガス", d:getTxt('poison','毒霧散布'), f:()=>stats.poison++},
         {id:'chakram', t:"🥏 チャクラム", d:getTxt('chakram','跳弾円盤'), f:()=>stats.chakram++}
     ];
+
+    // ★ Fix for Vanguard (Melee) -> Remove Pierce, Add Armor
+    if(player.class === 'Melee') {
+        allOpts = allOpts.filter(o => o.id !== 'pierce');
+        allOpts.push({id:'armor', t:"🛡️ アーマー", d:"被ダメージ -2", f:()=>stats.armor+=2});
+    }
 
     if(player.class === 'Assault') allOpts.push({id:'missile', t:"🚀 ミサイル", d:getTxt('missile','追尾ミサイル'), f:()=>stats.missile++, special:true});
     if(player.class === 'Sniper') allOpts.push({id:'drones', t:"🛰️ ドローン", d:getTxt('drones','攻撃ビット'), f:()=>stats.drones++, special:true});
@@ -1379,6 +1389,7 @@ function updateSkillList() {
     // New Skills Vis
     if(stats.chainBurst) html += `<div style="color:#0ff">💥 CHAIN BURST</div>`;
     if(stats.electroFence) html += `<div style="color:#0ff">⚡ ELECTRO FENCE</div>`;
+    if(stats.armor > 0) html += `<div style="color:#8f8">🛡️ ARMOR +${stats.armor}</div>`;
 
     if(stats.missile > 0) html += `<div style="color:#fa0">🚀 ミサイル Lv${stats.missile}</div>`;
     if(stats.drones > 0) html += `<div style="color:#ff0">🛰️ ドローン x${stats.drones}</div>`;
