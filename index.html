@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v1.8: Smart View</title>
+    <title>Evo Lite v1.9: Chakram Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.8 SMART VIEW</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v1.9 CHAKRAM UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -156,6 +156,10 @@ const Sound = {
             osc.type='sawtooth'; osc.frequency.setValueAtTime(50, now); osc.frequency.linearRampToValueAtTime(150, now+0.1);
             gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
             osc.start(now); osc.stop(now+0.2);
+        } else if(type === 'bounce') { // Chakram bounce
+            osc.type='triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(300, now+0.1);
+            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
+            osc.start(now); osc.stop(now+0.1);
         } else if(type === 'explode') {
             osc.type='sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(10, now+0.2);
             gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
@@ -187,21 +191,17 @@ const Sound = {
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// ★画面サイズ調整: 縦持ちの場合は視野を狭く（ズーム）して見やすくする
 let scaleFactor = 1;
 function resizeCanvas() {
     let winW = window.innerWidth;
     let winH = window.innerHeight;
     const isPortrait = winH > winW;
-    
-    // 縦持ちなら基準幅900（ズーム）、横持ちなら1600（ワイド）
     const targetWidth = isPortrait ? 900 : 1600;
     
     scaleFactor = 1;
     if (winW < targetWidth) {
         scaleFactor = targetWidth / winW;
     }
-    
     canvas.width = winW * scaleFactor;
     canvas.height = winH * scaleFactor;
 }
@@ -232,11 +232,10 @@ let stats = {
     bulletSpeed: 16, pierce: 0, 
     aura: false, auraRange: 0,
     regen: 1, magnet: 150, 
-    homing: 0, lightning: 0, poison: 0, spinBlade: 0,
+    homing: 0, lightning: 0, poison: 0, spinBlade: 0, chakram: 0,
     missile: 0, drones: 0, auraScale: 1,
     lifesteal: 0, critChance: 0, infinitePierce: false,
     missileBlast: 1, gravityAura: false, spreadShot: false,
-    // New Milestones
     napalm: false, spikeArmor: false, dashNova: false, 
     splitShot: false, giantSlayer: false
 };
@@ -255,7 +254,6 @@ let spikeBits = [];
 const keys = {};
 const mouse = { x: canvas.width/2, y: canvas.height/2 }; 
 
-// --- Input ---
 window.addEventListener('keydown', e => { keys[e.key] = true; if(e.code === 'Space') dash(); });
 window.addEventListener('keyup', e => keys[e.key] = false);
 window.addEventListener('mousemove', e => { 
@@ -463,14 +461,24 @@ function update(ts) {
         });
     }
 
-    // Aura
+    // Aura Update
     if(stats.aura) {
         let r = stats.auraRange * stats.auraScale;
+        // Vanguard Buff: Homing increases aura attack rate
+        let auraRate = 0.1;
+        if(player.class === 'Melee' && stats.homing > 0) auraRate += (stats.homing * 0.05);
+
         enemies.forEach(e => { 
             if(e.dead) return;
             let dist = Math.hypot(e.x-player.x, e.y-player.y);
             if(dist < r + e.size) {
-                if(Math.random() < 0.1 * ts) damageEnemy(e, stats.dmg);
+                if(Math.random() < auraRate * ts) {
+                    damageEnemy(e, stats.dmg);
+                    // Vanguard Buff: Lightning triggers on Aura hit
+                    if(player.class === 'Melee' && stats.lightning > 0 && Math.random() < 0.3) {
+                        triggerLightning(e, stats.lightning);
+                    }
+                }
                 if(stats.gravityAura) {
                     let pull = 1.0 * ts; 
                     e.x += (player.x - e.x) / dist * pull;
@@ -482,13 +490,70 @@ function update(ts) {
         });
     }
 
-    if(!stats.aura && Math.random() < (1/stats.rate)*ts) shoot();
+    // Auto Shoot (Chakram included)
+    if(!stats.aura && Math.random() < (1/stats.rate)*ts) {
+        shoot();
+        if(stats.chakram > 0 && Math.random() < 0.3) fireChakram();
+    }
 
-    // Bullets
+    // Bullets Update
     let boundary = 200; 
     for(let i=bullets.length-1; i>=0; i--) {
         let b = bullets[i];
         
+        if(b.type === 'chakram') {
+            b.x += b.vx * ts; b.y += b.vy * ts;
+            b.life -= ts; 
+            if(b.life <= 0) { bullets.splice(i, 1); continue; }
+            
+            // Wall Bounce
+            if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
+            if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
+
+            let hit = false;
+            for(let j=enemies.length-1; j>=0; j--) {
+                let e = enemies[j];
+                if(e.dead || b.hit.includes(e.id)) continue;
+                if(Math.hypot(b.x-e.x, b.y-e.y) < b.size + e.size) {
+                    damageEnemy(e, stats.dmg * 1.5);
+                    createParticles(b.x, b.y, '#0ff', 2, 2);
+                    // Hit Bounce
+                    if(b.bounceCd <= 0) {
+                        let ang = Math.atan2(b.y - e.y, b.x - e.x); // Reflect away
+                        let spd = Math.hypot(b.vx, b.vy);
+                        b.vx = Math.cos(ang) * spd; b.vy = Math.sin(ang) * spd;
+                        b.bounceCd = 10;
+                        Sound.play('bounce');
+                    }
+                }
+            }
+            if(b.bounceCd > 0) b.bounceCd -= ts;
+            // Chakram rotation visual
+            if(Math.random()<0.3) createParticles(b.x, b.y, '#8ff', 1, 1);
+            continue;
+        }
+        
+        // Homing Logic Update (Super Homing)
+        if(b.type !== 'missile' && stats.homing > 0) {
+            let detectRange = 250 + (stats.homing * 50); 
+            let target = null, minD = detectRange;
+            enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-b.x, e.y-b.y); if(d < minD && !b.hit.includes(e.id)) { minD = d; target = e; } });
+            
+            if(target) {
+                let desiredAngle = Math.atan2(target.y - b.y, target.x - b.x);
+                let currentAngle = Math.atan2(b.vy, b.vx);
+                // Turn speed buffed
+                let turnSpeed = (0.05 + (stats.homing * 0.05)) * ts; 
+                let diff = desiredAngle - currentAngle;
+                if(diff > Math.PI) diff -= Math.PI*2; if(diff < -Math.PI) diff += Math.PI*2;
+                if(Math.abs(diff) < Math.PI) { // Always turn
+                    currentAngle += Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed);
+                    let speed = Math.hypot(b.vx, b.vy);
+                    b.vx = Math.cos(currentAngle) * speed; b.vy = Math.sin(currentAngle) * speed;
+                }
+            }
+        }
+
         if(b.type === 'missile') {
             let minD = 400, target = null;
             enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-b.x, e.y-b.y); if(d < minD) { minD=d; target=e; } });
@@ -503,23 +568,6 @@ function update(ts) {
             b.x += b.vx * ts; b.y += b.vy * ts; 
             if(Math.random() < 0.5 * ts) createParticles(b.x, b.y, '#f80', 1, 2);
         } else {
-            if(stats.homing > 0) {
-                let detectRange = 250 + (stats.homing * 40); 
-                let target = null, minD = detectRange;
-                enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-b.x, e.y-b.y); if(d < minD && !b.hit.includes(e.id)) { minD = d; target = e; } });
-                if(target) {
-                    let desiredAngle = Math.atan2(target.y - b.y, target.x - b.x);
-                    let currentAngle = Math.atan2(b.vy, b.vx);
-                    let turnSpeed = (0.03 + (stats.homing * 0.01)) * ts;
-                    let diff = desiredAngle - currentAngle;
-                    if(diff > Math.PI) diff -= Math.PI*2; if(diff < -Math.PI) diff += Math.PI*2;
-                    if(Math.abs(diff) < Math.PI * 0.6) {
-                        currentAngle += Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed);
-                        let speed = Math.hypot(b.vx, b.vy);
-                        b.vx = Math.cos(currentAngle) * speed; b.vy = Math.sin(currentAngle) * speed;
-                    }
-                }
-            }
             b.x += b.vx * ts; b.y += b.vy * ts;
         }
         
@@ -541,7 +589,6 @@ function update(ts) {
                     enemies.forEach(subE => { 
                         if(!subE.dead && Math.hypot(subE.x - b.x, subE.y - b.y) < blastR) {
                             damageEnemy(subE, blastDmg);
-                            // Napalm Effect
                             if(stats.napalm && Math.random()<0.5) gasClouds.push({x:subE.x, y:subE.y, r:30, life:120, dmg:stats.dmg*0.2});
                         }
                     });
@@ -549,11 +596,9 @@ function update(ts) {
                     bullets.splice(i, 1); hit = true; break;
                 } else {
                     damageEnemy(e, stats.dmg);
-                    // Napalm Effect
                     if(stats.napalm && Math.random()<0.2) gasClouds.push({x:e.x, y:e.y, r:20, life:100, dmg:stats.dmg*0.2});
                     
-                    if(stats.splitShot) {
-                        // Create 2 mini bullets
+                    if(stats.splitShot && !b.isMini) {
                         for(let k=0; k<2; k++) {
                             let ang = (Math.random()*Math.PI*2);
                             bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true});
@@ -572,7 +617,6 @@ function update(ts) {
         if(hit) continue;
     }
 
-    // Enemy Bullets
     for(let i=enemyBullets.length-1; i>=0; i--) {
         let b = enemyBullets[i];
         b.x += b.vx * ts; b.y += b.vy * ts;
@@ -617,7 +661,6 @@ function update(ts) {
         }
 
         if(dist < player.size + e.size) {
-            // Spike Armor
             if(stats.spikeArmor && Math.random() < 0.2 * ts) {
                 damageEnemy(e, stats.dmg * 0.5);
                 createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
@@ -627,9 +670,17 @@ function update(ts) {
                 let cd = Math.max(10, 60 - stats.rate);
                 player.slamCd = cd; 
                 damageEnemy(e, stats.dmg * 2 * (player.size/15)); 
+                // Vanguard Buff: Pierce increases shockwave size
+                let waveSize = 15 + (stats.pierce * 5); 
                 Sound.play('bash');
                 createParticles(e.x, e.y, '#fff', 5, 2);
-                particles.push({type:'shockwave', x:player.x, y:player.y, size:15, life:10, color:'#f00'});
+                particles.push({type:'shockwave', x:player.x, y:player.y, size:waveSize, life:10, color:'#f00'});
+                // Shockwave AOE
+                enemies.forEach(subE => {
+                    if(!subE.dead && Math.hypot(subE.x - player.x, subE.y - player.y) < waveSize * 3) {
+                        damageEnemy(subE, stats.dmg * 0.5);
+                    }
+                });
             } else {
                 takeDamage(e.type === 'boss' ? 50 : 15);
             }
@@ -668,7 +719,17 @@ function update(ts) {
 
 function fireMissile() {
     Sound.play('missile');
-    bullets.push({ type: 'missile', x: player.x, y: player.y, vx: (Math.random()-0.5)*4, vy: -5, speed: 10, size: 8, hit: [] });
+    bullets.push({ type: 'missile', x: player.x, y: player.y, vx: (Math.random()-0.5)*4, vy: -5, speed: 10, size: 8, hit: [], isMini: false });
+}
+
+function fireChakram() {
+    let ang = Math.random() * Math.PI * 2;
+    bullets.push({ 
+        type: 'chakram', x: player.x, y: player.y, 
+        vx: Math.cos(ang)*12, vy: Math.sin(ang)*12, 
+        size: 10 + stats.chakram*2, life: 180 + stats.chakram*30, 
+        hit: [], bounceCd: 0 
+    });
 }
 
 function triggerLightning(target, lv) {
@@ -746,6 +807,11 @@ function draw() {
     bullets.forEach(b => { 
         if(b.type === 'missile') {
             ctx.fillStyle = '#f80'; ctx.beginPath(); ctx.moveTo(b.x, b.y-8); ctx.lineTo(b.x+6, b.y+6); ctx.lineTo(b.x-6, b.y+6); ctx.fill();
+        } else if(b.type === 'chakram') {
+            ctx.fillStyle = '#0ff'; 
+            ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Date.now() * 0.2);
+            ctx.fillRect(-b.size/2, -b.size/2, b.size, b.size);
+            ctx.restore();
         } else {
             let drawSize = (player.class === 'Sniper' && b.type === 'normal') ? 8 : b.size;
             if(b.isMini) drawSize = 2;
@@ -809,7 +875,6 @@ function dash() {
     player.x += Math.cos(ang) * 200; player.y += Math.sin(ang) * 200;
     createParticles(player.x, player.y, '#fff', 15, 3);
     
-    // Milestone: Dash Nova
     if(stats.dashNova) {
         particles.push({type:'shockwave', x:player.x, y:player.y, size:20, life:20, color:'#0ff'});
         Sound.play('explode');
@@ -880,7 +945,6 @@ function damageEnemy(e, dmg) {
     let isCrit = false;
     if(Math.random() < stats.critChance) { dmg *= 3; isCrit = true; }
     
-    // Giant Slayer
     if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
 
     e.hp -= dmg; e.flash = 5; createParticles(e.x, e.y, '#fff', 2, 2); Sound.play('hit');
@@ -975,7 +1039,6 @@ function showMilestone() {
         ];
     }
 
-    // Shuffle and pick 3
     pool.sort(() => Math.random() - 0.5);
     let opts = pool.slice(0, 3);
 
@@ -1008,9 +1071,11 @@ function showUpgrade() {
         {id:'spin', t:"⚔️ 回転刃", d:getTxt('spinBlade','回転刃'), f:()=>stats.spinBlade++},
         {id:'homing', t:"🎯 ホーミング", d:getTxt('homing','追尾弾'), f:()=>stats.homing++},
         {id:'lightning', t:"🌩️ ライトニング", d:getTxt('lightning','連鎖雷'), f:()=>stats.lightning++},
-        {id:'poison', t:"☠️ 毒ガス", d:getTxt('poison','毒霧散布'), f:()=>stats.poison++}
+        {id:'poison', t:"☠️ 毒ガス", d:getTxt('poison','毒霧散布'), f:()=>stats.poison++},
+        {id:'chakram', t:"🥏 チャクラム", d:getTxt('chakram','跳弾円盤'), f:()=>stats.chakram++}
     ];
 
+    // Vanguard: Unlock pierced/homing as specific buffs
     if(player.class === 'Assault') allOpts.push({id:'missile', t:"🚀 ミサイル", d:getTxt('missile','追尾ミサイル'), f:()=>stats.missile++, special:true});
     if(player.class === 'Sniper') allOpts.push({id:'drones', t:"🛰️ ドローン", d:getTxt('drones','攻撃ビット'), f:()=>stats.drones++, special:true});
     if(player.class === 'Melee') {
@@ -1018,10 +1083,7 @@ function showUpgrade() {
         allOpts.push({id:'superRegen', t:"💖 超回復", d:"回復 +10/s", f:()=>stats.regen+=10, special:true});
     }
 
-    let validOpts = allOpts.filter(o => {
-        if(player.class === 'Melee' && (o.id === 'pierce' || o.id === 'homing')) return false; 
-        return true;
-    });
+    let validOpts = allOpts.filter(o => true); // All allowed now for diversity
 
     let p = []; 
     let saftey = 0;
@@ -1103,6 +1165,7 @@ function updateSkillList() {
     if(stats.poison > 0) html += `<div>☠️ 毒ガス Lv${stats.poison}</div>`;
     if(stats.pierce > 0 && !stats.infinitePierce) html += `<div>🏹 貫通 Lv${stats.pierce}</div>`;
     if(stats.multi > 1) html += `<div>🔫 弾数/盾 ${stats.multi}</div>`;
+    if(stats.chakram > 0) html += `<div style="color:#0ff">🥏 チャクラム Lv${stats.chakram}</div>`;
     list.innerHTML = html;
 }
 
