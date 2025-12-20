@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.3.3: Delayed Horde</title>
+    <title>Evo Lite v2.3.5: Smooth Escalation</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.3.3 DELAYED HORDE</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.3.5 SMOOTH ESCALATION</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -102,8 +102,8 @@
 
 <script>
 // --- Config ---
-const MAX_ENEMIES = 1000; // Increased limit for Horde Mode
-const MAX_PARTICLES = 500; // Increased particle limit
+const MAX_ENEMIES = 800; // Balanced Limit
+const MAX_PARTICLES = 500; 
 const MAX_ORBS = 300;
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 12;
@@ -619,10 +619,19 @@ function update(ts) {
         }
     }
 
-    let spawnRate = Math.max(3, 25 - level * 1.5); 
-    // ★MODIFIED: Low spawn until Lv5, then x3 Horde Mode
-    let hordeMult = level < 5 ? 1.0 : 3.0; 
-    if(Math.random() < (hordeMult/spawnRate)*ts) spawnEnemy('random', gameTimeSec);
+    // ★MODIFIED: Smooth Escalation logic
+    if(enemies.length < MAX_ENEMIES) {
+        let spawnDenom = Math.max(5, 25 - (level * 0.6)); 
+        let hordeMult = 1.0;
+        
+        if (level >= 5) {
+            // Lv5 -> 2x, Lv30 -> 3x (smooth transition)
+            let progress = Math.min(1.0, (level - 5) / 25);
+            hordeMult = 2.0 + progress; 
+        }
+        
+        if(Math.random() < (hordeMult / spawnDenom) * ts) spawnEnemy('random', gameTimeSec);
+    }
 
     // --- Boss Cycle (5 mins) ---
     let cycleTime = gameTimeSec % 300; 
@@ -926,7 +935,6 @@ function shoot() {
 }
 
 function spawnEnemy(mode, time) {
-    // ★MODIFIED: Safety Check
     if(enemies.length >= MAX_ENEMIES) return;
 
     let dist = Math.max(canvas.width, canvas.height)/2 + 50;
@@ -943,9 +951,7 @@ function spawnEnemy(mode, time) {
 function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob' };
     
-    // HP Inflation (Hardcore)
-    // 序盤のHPを大幅に下げる (Lv1~5) -> 後半は指数関数的に上げる (Lv7~)
-    let baseHp = 10; // Base HP drastically lowered
+    let baseHp = 10; 
     let hpMult = Math.pow(1.15, level - 1); 
 
     if(type === 'boss') { 
@@ -953,7 +959,6 @@ function createEnemy(type, x, y) {
         e.hp *= (1 + bossCycleCounter * 0.5); 
         e.dmg = 50 + (level * 2);
     }
-    // All enemies are now uniform RED (#ff3333) for simplicity
     else if(type === 'dasher') { e.hp = 25 * hpMult; e.maxHp = e.hp; e.size = 18; e.color = '#ff3333'; e.speed = 2.5 + (level * 0.02); e.ai='dasher'; e.state='chase'; }
     else if(type === 'splitter') { e.hp = 20 * hpMult; e.maxHp = e.hp; e.size = 20; e.color = '#ff3333'; e.speed = 1.2 + (level * 0.01); e.ai='splitter'; }
     else if(type === 'bat') { e.hp = 8 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#ff3333'; e.speed = 5.0 + (level * 0.03); e.ai='bat'; }
@@ -962,7 +967,6 @@ function createEnemy(type, x, y) {
     else if(type === 'minion') { e.hp = 8 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#ff3333'; e.speed = 3.0 + (level * 0.02); e.ai='normal'; }
     else { e.hp = 15 * hpMult; e.maxHp = e.hp; e.size = 14; e.color = '#ff3333'; e.speed = 2.0 + (level * 0.01) + Math.random(); e.ai='normal'; }
     
-    // Attack Damage Scaling
     if(!e.dmg) e.dmg = 10 + Math.floor(level * 1.5);
 
     enemies.push(e);
@@ -1022,7 +1026,6 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
-        // Slower Leveling Curve (Hardcore)
         nextExp = Math.floor(nextExp * 1.25) + 100; 
         Sound.play('levelup'); updateUI(); 
         
