@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.5.0: Class Unique Skills</title>
+    <title>Evo Lite v2.5.2: XP Boost & Rush</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.5.0 FORBIDDEN</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.5.2 XP BOOST</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -123,7 +123,7 @@ const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let actx = null;
 let lastSoundTime = {};
 
-// ★ Sound Engine (v2.4.5)
+// ★ Sound Engine
 const Sound = {
     activeEndTimes: [],
     init: () => { 
@@ -189,6 +189,8 @@ const Sound = {
             duration = 0.2; osc.type='square'; osc.frequency.setValueAtTime(100, now); osc.frequency.linearRampToValueAtTime(50, now+0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
         } else if(type === 'lightning') {
             duration = 0.2; osc.type='sawtooth'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(100, now+0.2); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
+        } else if(type === 'spark') {
+            duration = 0.15; osc.type='sawtooth'; osc.frequency.setValueAtTime(2000, now); osc.frequency.linearRampToValueAtTime(500, now+0.15); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.15);
         }
         osc.start(now); osc.stop(now + duration);
         Sound.activeEndTimes.push(now + duration + 0.05);
@@ -222,7 +224,8 @@ let screenShake = 0;
 let bossCycleCounter = 0; 
 let bossWarningTimer = 0;
 let bossWarningActive = false; 
-let earthquakeTimer = 0; // For Melee Skill
+let earthquakeTimer = 0;
+let electroFenceTimer = 0; 
 
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
@@ -256,7 +259,7 @@ let stats = {
 
     // Forbidden Skills (Sniper)
     railgun: false, execute: false, deadeye: false, 
-    splitHit: false, absoluteZero: false, orbital: false,
+    electroFence: false, chainBurst: false, orbital: false,
 
     // Generic
     omegaLaser: false, necromancer: false
@@ -387,8 +390,26 @@ function update(ts) {
             particles.push({type:'shockwave', x:player.x, y:player.y, size:400, life:30, color:'#f80'});
         }
     }
+    if(stats.electroFence) {
+        electroFenceTimer -= ts;
+        if(electroFenceTimer <= 0) {
+            electroFenceTimer = 60; // 1 second
+            let r = 150;
+            Sound.play('spark');
+            particles.push({type:'shockwave', x:player.x, y:player.y, size:r, life:20, color:'#88ffff'});
+            enemies.forEach(e => {
+                if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < r + e.size) {
+                    damageEnemy(e, stats.dmg);
+                    e.frozen = 30; // 0.5s stun
+                    let ang = Math.atan2(e.y-player.y, e.x-player.x);
+                    e.x += Math.cos(ang) * 30; e.y += Math.sin(ang) * 30; // Knockback
+                    createLightningEffect(player.x, player.y, e.x, e.y);
+                }
+            });
+        }
+    }
+
     if(stats.orbital && Math.random() < 0.05 * ts) {
-        // Random Orbital Strike
         let t = enemies[Math.floor(Math.random()*enemies.length)];
         if(t && !t.dead) {
             createParticles(t.x, t.y, '#f0f', 10, 3);
@@ -561,7 +582,6 @@ function update(ts) {
             if(b.life <= 0) { bullets.splice(i, 1); continue; }
             if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
             if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
-            // Chakram bounce logic
             for(let j=enemies.length-1; j>=0; j--) {
                 let e = enemies[j];
                 if(e.dead || b.hit.includes(e.id)) continue;
@@ -618,7 +638,6 @@ function update(ts) {
             b.x += b.vx * ts; b.y += b.vy * ts;
         }
 
-        // Shot Bounce (Assault Skill)
         if(stats.shotBounce && (b.type === 'normal')) {
             if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
             if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
@@ -652,20 +671,15 @@ function update(ts) {
                     damageEnemy(e, stats.dmg);
                     
                     if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; // Sniper Skill
-                    if(stats.shotExplode) { // Assault Skill
+                    if(stats.shotExplode) { 
                         Sound.play('explode', 2.0);
                         enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < 50) damageEnemy(subE, stats.dmg*0.5); });
                         createParticles(e.x, e.y, '#fa0', 3, 2);
                     }
                     if(stats.napalm && Math.random()<0.2) gasClouds.push({x:e.x, y:e.y, r:20, life:100, dmg:stats.dmg*0.2});
                     
-                    if(stats.splitHit && !b.isMini) { // Sniper Skill
+                    if(stats.splitShot && !b.isMini) { 
                         for(let k=0; k<2; k++) {
-                            let ang = (Math.random()*Math.PI*2);
-                            bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true});
-                        }
-                    } else if(stats.splitShot && !b.isMini) { // Standard Upgrade
-                         for(let k=0; k<2; k++) {
                             let ang = (Math.random()*Math.PI*2);
                             bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true});
                         }
@@ -687,7 +701,6 @@ function update(ts) {
         let b = enemyBullets[i];
         b.x += b.vx * ts; b.y += b.vy * ts;
         if(b.x < -100 || b.x > canvas.width+100 || b.y < -100 || b.y > canvas.height+100) { enemyBullets.splice(i, 1); continue; }
-        // Enemy Damage Calculation with level
         if(Math.hypot(player.x-b.x, player.y-b.y) < player.size + b.size) { 
             let dmg = 10 + Math.floor(level * 0.5);
             takeDamage(dmg); 
@@ -702,7 +715,14 @@ function update(ts) {
             let progress = Math.min(1.0, (level - 5) / 25);
             hordeMult = 2.0 + progress; 
         }
-        if(Math.random() < (hordeMult / spawnDenom) * ts) spawnEnemy('random', gameTimeSec);
+
+        // ★ Rush Mode: If HP is high, spawn more enemies!
+        let spawnProb = (hordeMult / spawnDenom) * ts;
+        if(player.hp >= player.maxHp * 0.9) {
+            spawnProb *= 3.0; // 3x Spawn Rate when healthy
+        }
+
+        if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
     }
 
     // --- Boss Cycle (5 mins) ---
@@ -758,7 +778,7 @@ function update(ts) {
                     damageEnemy(e, stats.dmg * 0.5);
                     if(particles.length < MAX_PARTICLES) createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
                 }
-                if(stats.spikeReflect) { // Melee Skill
+                if(stats.spikeReflect) { 
                     damageEnemy(e, e.dmg * 2.0);
                     Sound.play('hit');
                 }
@@ -830,9 +850,9 @@ function shoot() {
 
     let count = stats.multi;
     if(player.class === 'Sniper') count = 1; 
-    if(stats.infiniteMag) count += 3; // Assault Skill
+    if(stats.infiniteMag) count += 3; 
 
-    if(stats.doubleShot && Math.random() < 0.5) count *= 2; // Assault Skill
+    if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
 
     let spread = 0.1; 
     let startAngle = angle - (spread * (count-1)) / 2;
@@ -856,7 +876,7 @@ function shoot() {
         });
     }
 
-    if(stats.missileChance > 0 && Math.random() < stats.missileChance) { // Assault Skill
+    if(stats.missileChance > 0 && Math.random() < stats.missileChance) { 
         fireMissile();
     }
 
@@ -954,6 +974,11 @@ function draw() {
         ctx.fillStyle = 'rgba(0, 255, 255, 0.05)';
         ctx.beginPath(); ctx.arc(player.x, player.y, 250, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)'; ctx.lineWidth=1; ctx.stroke();
+    }
+    // New: Electro Fence Vis
+    if(stats.electroFence) {
+        ctx.strokeStyle = `rgba(136, 255, 255, ${(electroFenceTimer/60)})`;
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(player.x, player.y, 150, 0, Math.PI*2); ctx.stroke();
     }
 
     gasClouds.forEach(g => { ctx.fillStyle = `rgba(100, 0, 150, ${g.life/100})`; ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, Math.PI*2); ctx.fill(); });
@@ -1083,7 +1108,6 @@ function createEnemy(type, x, y) {
     let hpMult = Math.pow(1.10, level - 1); 
 
     if(type === 'boss') { 
-        // ★ Boss Weakened (3000 Base)
         e.hp = 3000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
         e.hp *= (1 + bossCycleCounter * 0.3); 
         e.dmg = 50 + (level * 2);
@@ -1110,11 +1134,11 @@ function triggerWarning() {
 function damageEnemy(e, dmg) {
     if(e.dead) return; 
     let isCrit = false;
-    if(Math.random() < stats.critChance || stats.deadeye) { dmg *= (stats.deadeye ? 3 : 2); isCrit = true; } // Sniper Skill
+    if(Math.random() < stats.critChance || stats.deadeye) { dmg *= (stats.deadeye ? 3 : 2); isCrit = true; } 
     
     if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
     if(stats.executioner && (e.hp < e.maxHp * 0.2)) dmg = e.hp + 999; 
-    if(stats.execute && (e.hp < e.maxHp * 0.3)) dmg = e.hp + 9999; // Sniper Skill
+    if(stats.execute && (e.hp < e.maxHp * 0.3)) dmg = e.hp + 9999; 
 
     e.hp -= dmg; e.flash = 5; 
     if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 2, 2); 
@@ -1127,35 +1151,50 @@ function damageEnemy(e, dmg) {
         if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?50:15, 5);
         particles.push({type:'shockwave', x:e.x, y:e.y, size:10, life:15, color:'#fff'});
         
+        if(stats.chainBurst) {
+             Sound.play('explode', 2.0);
+             let range = 100;
+             let burstDmg = stats.dmg * 2;
+             createParticles(e.x, e.y, '#0ff', 10, 3);
+             enemies.forEach(subE => {
+                 if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < range) {
+                     damageEnemy(subE, burstDmg);
+                 }
+             });
+             particles.push({type:'shockwave', x:e.x, y:e.y, size:range, life:10, color:'#0ff'});
+        }
+
         if(stats.necromancer) {
             bullets.push({type: 'spirit', x: e.x, y: e.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
         }
-        if(stats.bloodLust) { // Melee Skill
+        if(stats.bloodLust) { 
              player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01);
         }
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
 
-        let baseVal = 10; 
-        if(level >= 50) baseVal = 10000;     
-        else if(level >= 40) baseVal = 3000;
-        else if(level >= 30) baseVal = 800;  
-        else if(level >= 20) baseVal = 200;
-        else if(level >= 10) baseVal = 50;
+        // ★ XP Boost Logic: 15, 25, 35, 45 steps
+        let baseVal = 25; 
+        if(level >= 45) baseVal = 20000;
+        else if(level >= 35) baseVal = 6000;
+        else if(level >= 25) baseVal = 1500;
+        else if(level >= 15) baseVal = 300;
+        else if(level >= 5) baseVal = 80;
 
         let val = baseVal;
-        if(e.type === 'boss') val = 20000;
+        if(e.type === 'boss') val = baseVal * 50;
         else if(e.ai === 'tank') val = Math.max(300, baseVal * 3);
 
         let orbType = { val: val, color: '#0ff', size: 4, pitch: 1.0 }; 
         if(val >= 20000) orbType = { val: val, color: '#f0f', size: 16, pitch: 0.5 }; 
-        else if(val >= 10000) orbType = { val: val, color: '#f00', size: 14, pitch: 0.6 }; 
-        else if(val >= 3000) orbType = { val: val, color: '#f80', size: 12, pitch: 0.7 }; 
-        else if(val >= 800) orbType = { val: val, color: '#00f', size: 10, pitch: 0.8 }; 
-        else if(val >= 200) orbType = { val: val, color: '#0f0', size: 8, pitch: 0.9 }; 
+        else if(val >= 6000) orbType = { val: val, color: '#f00', size: 14, pitch: 0.6 }; 
+        else if(val >= 1500) orbType = { val: val, color: '#f80', size: 12, pitch: 0.7 }; 
+        else if(val >= 300) orbType = { val: val, color: '#00f', size: 10, pitch: 0.8 }; 
+        else if(val >= 80) orbType = { val: val, color: '#0f0', size: 8, pitch: 0.9 }; 
         
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
+        // Always drop XP if limit not reached
         if(expOrbs.length < MAX_ORBS) expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
     }
 }
@@ -1190,7 +1229,7 @@ function showMilestone() {
         {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間 3倍", f:()=>{player.invincible=60;}}
     ];
 
-    // Class Specific Pools (6 items each)
+    // Class Specific Pools
     if(player.class === 'Assault') {
         pool = [
             {t:"💣 爆裂弾", d:"通常弾が着弾時に爆発する", f:()=>{stats.shotExplode=true;}},
@@ -1214,13 +1253,12 @@ function showMilestone() {
             {t:"🚅 レールガン", d:"弾速2倍 / サイズ2倍 / 無限貫通", f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;}},
             {t:"🔪 処刑人", d:"HP30%以下の敵を即死", f:()=>{stats.execute=true;}},
             {t:"👁️ デッドアイ", d:"確定クリティカル / 倍率強化", f:()=>{stats.deadeye=true;}},
-            {t:"❄️ 絶対零度", d:"攻撃時30%で敵を凍結", f:()=>{stats.absoluteZero=true;}},
-            {t:"☄️ 天罰", d:"ランダムに衛星レーザーが降り注ぐ", f:()=>{stats.orbital=true;}},
-            {t:"✨ 分裂弾", d:"着弾時に弾が分裂する", f:()=>{stats.splitHit=true;}}
+            {t:"⚡ エレクトロフェンス", d:"周囲の敵を麻痺・弾き飛ばす", f:()=>{stats.electroFence=true;}}, 
+            {t:"💥 チェーンバースト", d:"敵撃破時に連鎖爆発", f:()=>{stats.chainBurst=true;}}, 
+            {t:"☄️ 天罰", d:"ランダムに衛星レーザーが降り注ぐ", f:()=>{stats.orbital=true;}}
         ];
     }
 
-    // Pick 3 Random
     pool.sort(() => Math.random() - 0.5);
     let opts = pool.slice(0, 3);
 
@@ -1333,12 +1371,15 @@ function updateUI() {
 function updateSkillList() {
     let list = document.getElementById('skill-list');
     let html = "";
-    // Display significant active skills
     if(stats.omegaLaser) html += `<div style="color:#f0f">⚡ OMEGA LASER</div>`;
     if(stats.titan) html += `<div style="color:#f00">🦍 TITAN</div>`;
     if(stats.gatling) html += `<div style="color:#0ff">⚙️ GATLING</div>`;
     if(stats.railgun) html += `<div style="color:#ff0">🚅 RAILGUN</div>`;
     
+    // New Skills Vis
+    if(stats.chainBurst) html += `<div style="color:#0ff">💥 CHAIN BURST</div>`;
+    if(stats.electroFence) html += `<div style="color:#0ff">⚡ ELECTRO FENCE</div>`;
+
     if(stats.missile > 0) html += `<div style="color:#fa0">🚀 ミサイル Lv${stats.missile}</div>`;
     if(stats.drones > 0) html += `<div style="color:#ff0">🛰️ ドローン x${stats.drones}</div>`;
     if(stats.auraScale > 1) html += `<div style="color:#f00">🛡️ オーラ倍率 x${stats.auraScale.toFixed(1)}</div>`;
