@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.3.1: Death March Fix</title>
+    <title>Evo Lite v2.3.2: Horde Mode</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.3.1 DEATH MARCH</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.3.2 HORDE MODE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -102,7 +102,8 @@
 
 <script>
 // --- Config ---
-const MAX_PARTICLES = 250;
+const MAX_ENEMIES = 1000; // Increased limit for Horde Mode
+const MAX_PARTICLES = 500; // Increased particle limit
 const MAX_ORBS = 300;
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 12;
@@ -215,7 +216,7 @@ let nextExp = 50;
 let screenShake = 0;
 let bossCycleCounter = 0; 
 let bossWarningTimer = 0;
-let bossWarningActive = false; // ★追加：ここが抜けていたためエラーになっていました
+let bossWarningActive = false; 
 
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
@@ -619,7 +620,8 @@ function update(ts) {
     }
 
     let spawnRate = Math.max(3, 25 - level * 1.5); 
-    if(Math.random() < (1/spawnRate)*ts) spawnEnemy('random', gameTimeSec);
+    // ★MODIFIED: 3x Spawn Rate
+    if(Math.random() < (3/spawnRate)*ts) spawnEnemy('random', gameTimeSec);
 
     // --- Boss Cycle (5 mins) ---
     let cycleTime = gameTimeSec % 300; 
@@ -923,6 +925,9 @@ function shoot() {
 }
 
 function spawnEnemy(mode, time) {
+    // ★MODIFIED: Safety Check
+    if(enemies.length >= MAX_ENEMIES) return;
+
     let dist = Math.max(canvas.width, canvas.height)/2 + 50;
     let ang = Math.random()*Math.PI*2;
     let ex = player.x + Math.cos(ang)*dist; let ey = player.y + Math.sin(ang)*dist; let type = mode;
