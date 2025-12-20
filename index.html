@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.7.1: System Update</title>
+    <title>Evo Lite v2.8.0: Magnet Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -100,7 +100,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.7.1 SYSTEM UPDATE</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.8.0 MAGNET UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -204,6 +204,8 @@ const Sound = {
             duration = 0.2; osc.type='sawtooth'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(100, now+0.2); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
         } else if(type === 'spark') {
             duration = 0.15; osc.type='sawtooth'; osc.frequency.setValueAtTime(2000, now); osc.frequency.linearRampToValueAtTime(500, now+0.15); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.15);
+        } else if(type === 'powerup') {
+            duration = 0.5; osc.type='sine'; osc.frequency.setValueAtTime(440, now); osc.frequency.linearRampToValueAtTime(880, now+0.25); osc.frequency.linearRampToValueAtTime(1760, now+0.5); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
         }
         osc.start(now); osc.stop(now + duration);
         Sound.activeEndTimes.push(now + duration + 0.05);
@@ -244,6 +246,9 @@ let singularityMode = false;
 // Guardian Sentry
 let sentries = [];
 let sentryTimer = 0;
+
+// ★ NEW: Items array for drops like Magnets
+let items = [];
 
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
@@ -560,10 +565,7 @@ function update(ts) {
             d.x += Math.cos(ang) * 12 * ts * droneSpeedMult; d.y += Math.sin(ang) * 12 * ts * droneSpeedMult;
             if(Math.hypot(d.x - d.target.x, d.y - d.target.y) < 20) {
                 damageEnemy(d.target, stats.dmg * 2);
-                
-                // ★ NEW: Drones now trigger lightning
                 if(stats.lightning > 0) triggerLightning(d.target, stats.lightning);
-
                 if(particles.length < MAX_PARTICLES) createParticles(d.x, d.y, '#ff0', 5, 2);
                 d.state = 'return'; d.timer = 30 / droneSpeedMult; 
             }
@@ -776,7 +778,6 @@ function update(ts) {
                         }
                     }
 
-                    // ★ Bullets (Player & Turret) trigger Lightning
                     if(stats.lightning > 0) triggerLightning(e, stats.lightning);
                     b.hit.push(e.id);
                     if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#ffffaa', 3, 2); 
@@ -897,6 +898,7 @@ function update(ts) {
     
     enemies = enemies.filter(e => !e.dead);
 
+    // ★ XP Orbs & Magnet Logic
     if(expOrbs.length > MAX_ORBS) {
         let removed = expOrbs.splice(0, expOrbs.length - MAX_ORBS);
         removed.forEach(o => { if(gameActive) addExp(o.val * 0.5, true); });
@@ -904,9 +906,39 @@ function update(ts) {
     for(let i=expOrbs.length-1; i>=0; i--) {
         if(!gameActive) break; 
         let o = expOrbs[i];
+        
         let d = Math.hypot(player.x - o.x, player.y - o.y);
-        if(d < stats.magnet) { o.x += (player.x - o.x)*0.25*ts; o.y += (player.y - o.y)*0.25*ts; }
+
+        // ★ If collected by Magnet item, force move
+        if(o.forceCollect) {
+            o.x += (player.x - o.x) * 0.2 * ts; // High speed
+            o.y += (player.y - o.y) * 0.2 * ts;
+        } else if(d < stats.magnet) {
+            o.x += (player.x - o.x) * 0.25 * ts; 
+            o.y += (player.y - o.y) * 0.25 * ts; 
+        }
+        
         if(d < 20) { addExp(o.val); Sound.play('exp', o.pitch); expOrbs.splice(i, 1); }
+    }
+
+    // ★ New Item Loop (Magnet, etc.)
+    for(let i=items.length-1; i>=0; i--) {
+        let it = items[i];
+        let d = Math.hypot(player.x - it.x, player.y - it.y);
+        // Items always have magnetic pull
+        if(d < 200) {
+            it.x += (player.x - it.x) * 0.1 * ts;
+            it.y += (player.y - it.y) * 0.1 * ts;
+        }
+        if(d < 30) {
+            if(it.type === 'magnet') {
+                Sound.play('powerup');
+                particles.push({type:'shockwave', x:player.x, y:player.y, size:500, life:30, color:'#fff'});
+                // Trigger Magnet on all existing orbs
+                expOrbs.forEach(o => o.forceCollect = true);
+            }
+            items.splice(i, 1);
+        }
     }
 
     if(particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES);
@@ -1161,6 +1193,18 @@ function draw() {
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size + 10, 0, Math.PI*2); ctx.stroke();
     }
 
+    // ★ Draw Items
+    items.forEach(it => {
+        if(it.type === 'magnet') {
+            ctx.save(); ctx.translate(it.x, it.y);
+            let s = 1.0 + Math.sin(Date.now()*0.01)*0.2;
+            ctx.scale(s, s);
+            ctx.font = '24px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline='middle';
+            ctx.fillText('🧲', 0, 0);
+            ctx.restore();
+        }
+    });
+
     if(player.invincible % 10 < 5) {
         ctx.shadowBlur = 30; ctx.shadowColor = player.color; ctx.fillStyle = player.color;
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, Math.PI*2); ctx.fill();
@@ -1358,6 +1402,11 @@ function damageEnemy(e, dmg) {
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
         if(expOrbs.length < MAX_ORBS) expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
+
+        // ★ Chance to drop Magnet (0.2%)
+        if(Math.random() < 0.002) {
+             items.push({type: 'magnet', x: e.x, y: e.y});
+        }
     }
 }
 
