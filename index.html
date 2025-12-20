@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.1.1: Golem Update</title>
+    <title>Evo Lite v3.1.2: God Buff Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -105,7 +105,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.1.1 GOLEM UPDATE</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.1.2 GOD BUFF UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -647,7 +647,8 @@ function update(ts) {
     }
 
     if(stats.missile > 0) {
-        if(Math.random() < (1 / (120 - stats.missile * 10)) * ts) fireMissile();
+        // ★ 強化: 発射頻度向上
+        if(Math.random() < (1 / (60 - stats.missile * 5)) * ts) fireMissile();
     }
 
     if(drones.length < stats.drones) {
@@ -1749,7 +1750,7 @@ function showSecondEvo() {
     evos.forEach(o => {
         let el = document.createElement('div'); el.className='card evo';
         let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-        el.innerHTML = `<h3><span class="icon">${icon}</span>${title}</h3><p>${o.d}</p>`;
+        el.innerHTML = `<span class="icon">${icon}</span>${title}</h3><p>${o.d}</p>`;
         el.onclick = () => { 
             o.f(); 
             let nameSpan = document.getElementById('disp-class-name');
@@ -1873,6 +1874,10 @@ function showUpgrade() {
     if(player.class === 'Sniper') allOpts.push({id:'drones', t:"🛰️ ドローン", d:getTxt('drones','攻撃ビット'), f:()=>stats.drones++, special:true});
     if(player.class === 'Melee') {
         allOpts.push({id:'auraScale', t:"🛡️ オーラ拡大", d:"オーラ範囲 +20%", f:()=>stats.auraScale+=0.2, special:true});
+    }
+    
+    // 【変更】スナイパー以外は全員「超回復」が出るように
+    if(player.class !== 'Sniper') {
         allOpts.push({id:'superRegen', t:"💖 超回復", d:"回復 +10/s", f:()=>stats.regen+=10, special:true});
     }
 
@@ -1902,19 +1907,37 @@ function showEvo() {
     c.innerHTML = ''; m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "クラス進化";
 
+    // ★ GOD BUFF: スナイパー以外を魔改造レベルで強化
     let evos = [
-        {t:"🔫 アサルト", d:"連射特化: 🚀ミサイル解禁", f:()=>{player.class="Assault"; player.color="#00ffff"; stats.rate=6; stats.dmg+=2;}},
-        {t:"🛡️ ヴァンガード", d:"近接: 💥体当たり & 🛡️シールド", f:()=>{player.class="Melee"; player.color="#ff3333"; stats.aura=true; stats.auraRange=130; stats.spd+=2; player.maxHp+=200; player.hp+=200;}},
+        {t:"🔫 アサルト", d:"連射特化: マシンガン(連射・2発・貫通)解禁", f:()=>{
+            player.class="Assault"; player.color="#00ffff"; 
+            stats.rate=4; // マシンガン並み
+            stats.dmg+=10; 
+            stats.multi=1; // 最初から2発
+            stats.pierce=1; // 最初から貫通
+        }},
+        {t:"🛡️ ヴァンガード", d:"近接: 超・広範囲 & HP+500/リジェネ+10", f:()=>{
+            player.class="Melee"; player.color="#ff3333"; 
+            stats.aura=true; 
+            stats.auraRange=180; // 画面半分くらい覆う
+            stats.spd+=4; 
+            player.maxHp+=500; player.hp+=500; 
+            stats.regen+=10; // 最初から超回復
+        }},
         {t:"🔭 スナイパー", d:"遠距離: 💥破片 & 🔙ノックバック", f:()=>{
             player.class="Sniper"; player.color="#ffff00"; 
-            stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=1;
+            stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=0;
             stats.drones+=1; 
             stats.shrapnel=true; 
             stats.knockback=1; 
         }},
-        {t:"🧱 ガーディアン", d:"要塞: 🏗️タレット & 🛡️鉄壁", f:()=>{
+        {t:"🧱 ガーディアン", d:"要塞: 吸引・装甲+10・タレット3倍速", f:()=>{
             player.class="Guardian"; player.color="#00ff88"; 
-            stats.armor+=5; player.maxHp+=500; player.hp=player.maxHp; stats.spd-=1; 
+            stats.armor+=10; // ほぼ無敵
+            player.maxHp+=1000; player.hp=player.maxHp; 
+            stats.spd-=0.5; 
+            stats.magnet+=200; // 動かなくていい
+            stats.sentryRate=3.0; // タレットが暴れる
             stats.sentrySystem=true; spawnSentry();
         }}
     ];
