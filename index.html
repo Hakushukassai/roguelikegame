@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.4.0: Awakening</title>
+    <title>Evo Lite v2.4.1: Optimization Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.4.0 AWAKENING</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.4.1 OPTIMIZED</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -103,10 +103,10 @@
 <script>
 // --- Config ---
 const MAX_ENEMIES = 800;
-const MAX_PARTICLES = 500;
+const MAX_PARTICLES = 400; // Reduced for safety
 const MAX_ORBS = 300;
-const MAX_TEXTS = 50;
-const MAX_SOUND_CONCURRENT = 12;
+const MAX_TEXTS = 40;
+const MAX_SOUND_CONCURRENT = 8; // Tighter sound limit
 
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if(isMobile) {
@@ -130,7 +130,8 @@ const Sound = {
         if(!actx || activeSoundCount > MAX_SOUND_CONCURRENT) return;
         if(actx.state === 'suspended') actx.resume();
         const now = actx.currentTime;
-        if(lastSoundTime[type] && now - lastSoundTime[type] < 0.05) return;
+        // Limit repetition of same sound
+        if(lastSoundTime[type] && now - lastSoundTime[type] < 0.08) return;
         lastSoundTime[type] = now;
         activeSoundCount++;
         const osc = actx.createOscillator();
@@ -225,7 +226,7 @@ let player = {
     invincible: 0,
     dashCd: 0, maxDashCd: 120,
     slamCd: 0,
-    laserCd: 0, freezeCd: 0 // New Skill Timers
+    laserCd: 0, freezeCd: 0 
 };
 
 let stats = {
@@ -363,16 +364,16 @@ function update(ts) {
         player.laserCd -= ts;
         if(player.laserCd <= 0) {
             fireOmegaLaser();
-            player.laserCd = 180; // 3 seconds approx
+            player.laserCd = 180; // 3 seconds
         }
     }
     if(stats.absoluteZero) {
         enemies.forEach(e => {
             if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 250) {
-                e.frozen = 5; // Freeze for frames
+                e.frozen = 5; 
             }
         });
-        if(Math.random() < 0.2*ts) createParticles(player.x + (Math.random()-0.5)*500, player.y + (Math.random()-0.5)*500, '#88ffff', 1, 1);
+        if(Math.random() < 0.2*ts && particles.length < MAX_PARTICLES) createParticles(player.x + (Math.random()-0.5)*500, player.y + (Math.random()-0.5)*500, '#88ffff', 1, 1);
     }
 
     if(Math.random() < (1/60) * ts && player.hp < player.maxHp) {
@@ -445,7 +446,7 @@ function update(ts) {
             d.x += Math.cos(ang) * 12 * ts * droneSpeedMult; d.y += Math.sin(ang) * 12 * ts * droneSpeedMult;
             if(Math.hypot(d.x - d.target.x, d.y - d.target.y) < 20) {
                 damageEnemy(d.target, stats.dmg * 2);
-                createParticles(d.x, d.y, '#ff0', 5, 2);
+                if(particles.length < MAX_PARTICLES) createParticles(d.x, d.y, '#ff0', 5, 2);
                 d.state = 'return'; d.timer = 30 / droneSpeedMult; 
             }
         } else if(d.state === 'return') {
@@ -519,16 +520,22 @@ function update(ts) {
     for(let i=bullets.length-1; i>=0; i--) {
         let b = bullets[i];
         
+        // ★ Optimized Omega Laser
         if(b.type === 'omega') {
             b.x += b.vx * ts; b.y += b.vy * ts;
             b.life -= ts;
-            if(b.life <= 0) { bullets.splice(i,1); continue; }
-            enemies.forEach(e => {
-                if(!e.dead && Math.abs(e.x - b.x) < b.size && Math.abs(e.y - b.y) < b.size) {
-                    damageEnemy(e, stats.dmg * 5); // Huge Damage
-                    createParticles(e.x, e.y, '#f0f', 1, 1);
-                }
-            });
+            // Throttle damage tick (every 5 frames instead of every frame)
+            b.tick = (b.tick || 0) + ts;
+            if(b.tick >= 5) {
+                b.tick = 0;
+                enemies.forEach(e => {
+                    if(!e.dead && Math.abs(e.x - b.x) < b.size && Math.abs(e.y - b.y) < b.size) {
+                        damageEnemy(e, stats.dmg * 5); 
+                        if(particles.length < MAX_PARTICLES && Math.random() < 0.3) createParticles(e.x, e.y, '#f0f', 1, 1);
+                    }
+                });
+            }
+            if(b.life <= 0) { bullets.splice(i,1); }
             continue;
         }
 
@@ -545,7 +552,7 @@ function update(ts) {
                 if(e.dead || b.hit.includes(e.id)) continue;
                 if(Math.hypot(b.x-e.x, b.y-e.y) < b.size + e.size) {
                     damageEnemy(e, stats.dmg * 1.5);
-                    createParticles(b.x, b.y, '#0ff', 2, 2);
+                    if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#0ff', 2, 2);
                     if(b.bounceCd <= 0) {
                         let ang = Math.atan2(b.y - e.y, b.x - e.x); 
                         let spd = Math.hypot(b.vx, b.vy);
@@ -556,7 +563,7 @@ function update(ts) {
                 }
             }
             if(b.bounceCd > 0) b.bounceCd -= ts;
-            if(Math.random()<0.3) createParticles(b.x, b.y, '#8ff', 1, 1);
+            if(Math.random()<0.3 && particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#8ff', 1, 1);
             continue;
         }
         
@@ -591,7 +598,7 @@ function update(ts) {
                 b.vx = Math.cos(cur) * b.speed; b.vy = Math.sin(cur) * b.speed;
             }
             b.x += b.vx * ts; b.y += b.vy * ts; 
-            if(Math.random() < 0.5 * ts) createParticles(b.x, b.y, b.type==='spirit'?'#8f8':'#f80', 1, 2);
+            if(Math.random() < 0.5 * ts && particles.length < MAX_PARTICLES) createParticles(b.x, b.y, b.type==='spirit'?'#8f8':'#f80', 1, 2);
         } else {
             b.x += b.vx * ts; b.y += b.vy * ts;
         }
@@ -617,7 +624,7 @@ function update(ts) {
                             if(stats.napalm && Math.random()<0.5) gasClouds.push({x:subE.x, y:subE.y, r:30, life:120, dmg:stats.dmg*0.2});
                         }
                     });
-                    createParticles(b.x, b.y, '#f00', 10 * stats.missileBlast, 5 * stats.missileBlast);
+                    if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#f00', 10 * stats.missileBlast, 5 * stats.missileBlast);
                     bullets.splice(i, 1); hit = true; break;
                 } else {
                     damageEnemy(e, stats.dmg);
@@ -632,7 +639,7 @@ function update(ts) {
 
                     if(stats.lightning > 0) triggerLightning(e, stats.lightning);
                     b.hit.push(e.id);
-                    createParticles(b.x, b.y, '#ffffaa', 3, 2); 
+                    if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#ffffaa', 3, 2); 
                     
                     if(b.pierce <= 0 && !stats.infinitePierce) { bullets.splice(i, 1); hit = true; break; } 
                     else { b.pierce--; }
@@ -676,16 +683,15 @@ function update(ts) {
         bossCycleCounter = cycleWave;
         bossWarningActive = false;
         document.getElementById('warning-overlay').style.display = 'none';
-        spawnEnemy('boss', gameTimeSec); // ★ Force Spawn boss
+        spawnEnemy('boss', gameTimeSec); // ★ Force Spawn Boss
     }
 
     enemies.forEach(e => {
         if(e.dead) return;
         
-        if(e.frozen > 0) { // Freeze logic
+        if(e.frozen > 0) { 
             e.frozen -= ts;
-            createParticles(e.x, e.y, '#88ffff', 1, 1);
-            // Skip movement
+            if(Math.random()<0.1 && particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#88ffff', 1, 1);
         } else {
             let dist = Math.hypot(player.x - e.x, player.y - e.y);
             let angle = Math.atan2(player.y - e.y, player.x - e.x);
@@ -699,7 +705,7 @@ function update(ts) {
                     e.timer -= ts; if(e.timer <= 0) { e.state = 'dash'; e.timer = 30; e.vx = Math.cos(angle) * 14; e.vy = Math.sin(angle) * 14; }
                 } else if(e.state === 'dash') {
                     e.x += e.vx * ts; e.y += e.vy * ts; e.timer -= ts; 
-                    if(Math.random() < 0.5 * ts) createParticles(e.x, e.y, '#f80', 1, 2);
+                    if(Math.random() < 0.5 * ts && particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#f80', 1, 2);
                     if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 50; }
                 } else if(e.state === 'cooldown') { e.timer -= ts; e.x += Math.cos(angle) * (e.speed * 0.2) * ts; if(e.timer <= 0) e.state = 'chase'; }
             } else if(e.ai === 'shooter') {
@@ -716,7 +722,7 @@ function update(ts) {
             if(dist < player.size + e.size) {
                 if(stats.spikeArmor && Math.random() < 0.2 * ts) {
                     damageEnemy(e, stats.dmg * 0.5);
-                    createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
+                    if(particles.length < MAX_PARTICLES) createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
                 }
 
                 if(player.class === 'Melee' && player.slamCd <= 0) {
@@ -725,7 +731,7 @@ function update(ts) {
                     damageEnemy(e, stats.dmg * 2 * (player.size/15)); 
                     let waveSize = 15 + (stats.pierce * 5); 
                     Sound.play('bash');
-                    createParticles(e.x, e.y, '#fff', 5, 2);
+                    if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 5, 2);
                     particles.push({type:'shockwave', x:player.x, y:player.y, size:waveSize, life:10, color:'#f00'});
                     enemies.forEach(subE => {
                         if(!subE.dead && Math.hypot(subE.x - player.x, subE.y - player.y) < waveSize * 3) {
@@ -780,7 +786,8 @@ function fireOmegaLaser() {
     screenShake = 10;
     // Fires a massive bullet that covers screen height
     let w = 100;
-    bullets.push({ type: 'omega', x: player.x, y: player.y, vx: 50, vy: 0, size: 300, life: 30, hit: [] });
+    // Tick counter for throttling damage
+    bullets.push({ type: 'omega', x: player.x, y: player.y, vx: 50, vy: 0, size: 300, life: 30, hit: [], tick: 0 });
     // Visual effect
     particles.push({type:'shockwave', x:player.x, y:player.y, size:100, life:20, color:'#f0f'});
 }
@@ -967,7 +974,7 @@ function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0 };
     
     // Adjusted Boss HP Scaling (Less Exponential)
-    let hpMult = Math.pow(1.10, level - 1); // Reduced from 1.15
+    let hpMult = Math.pow(1.10, level - 1); 
 
     if(type === 'boss') { 
         e.hp = 10000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
@@ -1001,13 +1008,15 @@ function damageEnemy(e, dmg) {
     if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
     if(stats.executioner && (e.hp < e.maxHp * 0.2)) dmg = e.hp + 999; // Execution
 
-    e.hp -= dmg; e.flash = 5; createParticles(e.x, e.y, '#fff', 2, 2); Sound.play('hit');
-    texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
+    e.hp -= dmg; e.flash = 5; 
+    if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 2, 2); 
+    Sound.play('hit');
+    if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
     
     if(e.hp <= 0) {
         e.dead = true; 
         Sound.play('explode'); screenShake = e.type === 'boss' ? 20 : 3;
-        createParticles(e.x, e.y, e.color, e.type==='boss'?50:15, 5);
+        if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?50:15, 5);
         particles.push({type:'shockwave', x:e.x, y:e.y, size:10, life:15, color:'#fff'});
         
         // Necromancer: Spawn Spirit
@@ -1038,7 +1047,7 @@ function damageEnemy(e, dmg) {
         
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
-        expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
+        if(expOrbs.length < MAX_ORBS) expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
     }
 }
 
