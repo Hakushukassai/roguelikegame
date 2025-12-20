@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.4.3: Auto Aim</title>
+    <title>Evo Lite v2.5.0: Class Unique Skills</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -89,7 +89,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.4.3 AUTO AIM</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.5.0 FORBIDDEN</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -106,7 +106,7 @@ const MAX_ENEMIES = 800;
 const MAX_PARTICLES = 400; 
 const MAX_ORBS = 300;
 const MAX_TEXTS = 40;
-const MAX_SOUND_CONCURRENT = 8; 
+const MAX_SOUND_CONCURRENT = 32; 
 
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if(isMobile) {
@@ -122,71 +122,76 @@ const JOY_MAX_RADIUS = 50;
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let actx = null;
 let lastSoundTime = {};
-let activeSoundCount = 0;
 
+// ★ Sound Engine (v2.4.5)
 const Sound = {
-    init: () => { if(!actx) actx = new AudioCtx(); },
-    play: (type, pitch = 1.0) => {
-        if(!actx || activeSoundCount > MAX_SOUND_CONCURRENT) return;
-        if(actx.state === 'suspended') actx.resume();
+    activeEndTimes: [],
+    init: () => { 
+        if(!actx) {
+            actx = new AudioCtx(); 
+            const resumeFunc = () => {
+                if(actx.state === 'suspended') actx.resume();
+                window.removeEventListener('click', resumeFunc);
+                window.removeEventListener('touchstart', resumeFunc);
+                window.removeEventListener('keydown', resumeFunc);
+            };
+            window.addEventListener('click', resumeFunc);
+            window.addEventListener('touchstart', resumeFunc);
+            window.addEventListener('keydown', resumeFunc);
+        }
+    },
+    update: () => {
+        if(!actx) return;
         const now = actx.currentTime;
-        if(lastSoundTime[type] && now - lastSoundTime[type] < 0.08) return;
+        Sound.activeEndTimes = Sound.activeEndTimes.filter(t => t > now);
+    },
+    play: (type, pitch = 1.0) => {
+        if(!actx) Sound.init();
+        if(!actx) return;
+        if(actx.state === 'suspended') actx.resume().catch(()=>{});
+        if(Sound.activeEndTimes.length >= MAX_SOUND_CONCURRENT) return;
+
+        const now = actx.currentTime;
+        if(lastSoundTime[type] && now - lastSoundTime[type] < 0.06) return;
         lastSoundTime[type] = now;
-        activeSoundCount++;
+
         const osc = actx.createOscillator();
         const gain = actx.createGain();
         osc.connect(gain);
         gain.connect(actx.destination);
-        osc.onended = () => { activeSoundCount--; };
 
+        let duration = 0.1;
         if(type === 'shoot') {
-            osc.frequency.setValueAtTime(300 * pitch, now); osc.frequency.exponentialRampToValueAtTime(50, now+0.1);
-            gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
-            osc.start(now); osc.stop(now+0.1);
+            duration = 0.1; osc.frequency.setValueAtTime(300 * pitch, now); osc.frequency.exponentialRampToValueAtTime(50, now+0.1); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
         } else if(type === 'missile') { 
-            osc.type='square'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(400, now+0.2);
-            gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.3);
-            osc.start(now); osc.stop(now+0.3);
+            duration = 0.3; osc.type='square'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(400, now+0.2); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.3);
         } else if(type === 'hit') {
-            osc.type='square'; osc.frequency.setValueAtTime(100 * pitch, now); gain.gain.setValueAtTime(0.05, now);
-            gain.gain.linearRampToValueAtTime(0, now+0.05); osc.start(now); osc.stop(now+0.05);
+            duration = 0.05; osc.type='square'; osc.frequency.setValueAtTime(100 * pitch, now); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.05);
         } else if(type === 'dash') {
-            osc.type='triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(200, now+0.2);
-            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
-            osc.start(now); osc.stop(now+0.2);
+            duration = 0.2; osc.type='triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(200, now+0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
         } else if(type === 'laser') {
-            osc.type='sawtooth'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(200, now+0.5);
-            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
-            osc.start(now); osc.stop(now+0.5);
+            duration = 0.5; osc.type='sawtooth'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(200, now+0.5); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
         } else if(type === 'freeze') {
-            osc.type='sine'; osc.frequency.setValueAtTime(2000, now); osc.frequency.linearRampToValueAtTime(1000, now+0.3);
-            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.3);
-            osc.start(now); osc.stop(now+0.3);
+            duration = 0.3; osc.type='sine'; osc.frequency.setValueAtTime(2000, now); osc.frequency.linearRampToValueAtTime(1000, now+0.3); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.3);
         } else if(type === 'explode') {
-            osc.type='sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(10, now+0.2);
-            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
-            osc.start(now); osc.stop(now+0.2);
+            duration = 0.2; osc.type='sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(10, now+0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
         } else if(type === 'levelup') {
-            osc.type='triangle'; 
-            osc.frequency.setValueAtTime(440, now); osc.frequency.setValueAtTime(554, now+0.1); osc.frequency.setValueAtTime(659, now+0.2);
-            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.6);
-            osc.start(now); osc.stop(now+0.6);
+            duration = 0.6; osc.type='triangle'; osc.frequency.setValueAtTime(440, now); osc.frequency.setValueAtTime(554, now+0.1); osc.frequency.setValueAtTime(659, now+0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.6);
         } else if(type === 'milestone') {
-            osc.type='sawtooth'; 
-            osc.frequency.setValueAtTime(110, now); osc.frequency.linearRampToValueAtTime(440, now+0.8);
-            gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.8);
-            osc.start(now); osc.stop(now+0.8);
+            duration = 0.8; osc.type='sawtooth'; osc.frequency.setValueAtTime(110, now); osc.frequency.linearRampToValueAtTime(440, now+0.8); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.8);
         } else if(type === 'alert') {
-            osc.type='sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.linearRampToValueAtTime(150, now+0.5);
-            gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
-            osc.start(now); osc.stop(now+0.5);
+            duration = 0.5; osc.type='sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.linearRampToValueAtTime(150, now+0.5); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
         } else if(type === 'exp') {
-            osc.type='sine'; 
-            let freq = 1000 * pitch;
-            osc.frequency.setValueAtTime(freq, now); osc.frequency.linearRampToValueAtTime(freq + 500, now+0.05);
-            gain.gain.setValueAtTime(0.03, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
-            osc.start(now); osc.stop(now+0.1);
+            duration = 0.1; osc.type='sine'; let freq = 1000 * pitch; osc.frequency.setValueAtTime(freq, now); osc.frequency.linearRampToValueAtTime(freq + 500, now+0.05); gain.gain.setValueAtTime(0.03, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
+        } else if(type === 'bounce') {
+            duration = 0.1; osc.type='triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(300, now+0.1); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.1);
+        } else if(type === 'bash') {
+            duration = 0.2; osc.type='square'; osc.frequency.setValueAtTime(100, now); osc.frequency.linearRampToValueAtTime(50, now+0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
+        } else if(type === 'lightning') {
+            duration = 0.2; osc.type='sawtooth'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(100, now+0.2); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.2);
         }
+        osc.start(now); osc.stop(now + duration);
+        Sound.activeEndTimes.push(now + duration + 0.05);
     }
 };
 
@@ -199,11 +204,7 @@ function resizeCanvas() {
     let winH = window.innerHeight;
     const isPortrait = winH > winW;
     const targetWidth = isPortrait ? 900 : 1600;
-    
-    scaleFactor = 1;
-    if (winW < targetWidth) {
-        scaleFactor = targetWidth / winW;
-    }
+    scaleFactor = winW < targetWidth ? targetWidth / winW : 1;
     canvas.width = winW * scaleFactor;
     canvas.height = winH * scaleFactor;
 }
@@ -221,6 +222,7 @@ let screenShake = 0;
 let bossCycleCounter = 0; 
 let bossWarningTimer = 0;
 let bossWarningActive = false; 
+let earthquakeTimer = 0; // For Melee Skill
 
 let player = {
     x: canvas.width/2, y: canvas.height/2, size: 15,
@@ -244,9 +246,20 @@ let stats = {
     napalm: false, spikeArmor: false, dashNova: false, 
     splitShot: false, giantSlayer: false,
     
-    // Forbidden Skills
-    omegaLaser: false, absoluteZero: false, necromancer: false,
-    bloodSacrifice: false, executioner: false
+    // Forbidden Skills (Assault)
+    shotExplode: false, shotBounce: false, doubleShot: false, 
+    missileChance: 0, infiniteMag: false, gatling: false,
+
+    // Forbidden Skills (Melee)
+    titan: false, blackHole: false, bladeStorm: false, 
+    earthquake: false, spikeReflect: false, bloodLust: false,
+
+    // Forbidden Skills (Sniper)
+    railgun: false, execute: false, deadeye: false, 
+    splitHit: false, absoluteZero: false, orbital: false,
+
+    // Generic
+    omegaLaser: false, necromancer: false
 };
 
 let bullets = [];
@@ -264,7 +277,6 @@ const keys = {};
 
 window.addEventListener('keydown', e => { keys[e.key] = true; if(e.code === 'Space') dash(); });
 window.addEventListener('keyup', e => keys[e.key] = false);
-// Removed mouse move listener as it is no longer needed for aiming
 
 document.getElementById('dash-btn').addEventListener('touchstart', (e) => { e.preventDefault(); dash(); }, {passive: false});
 
@@ -341,6 +353,9 @@ function loop(timestamp) {
     lastTime = timestamp;
     let timeScale = dt / (1000 / 60);
     if(timeScale > 4) timeScale = 4;
+    
+    Sound.update();
+
     update(timeScale);
     draw();
     requestAnimationFrame(loop);
@@ -358,21 +373,29 @@ function update(ts) {
     if(player.slamCd > 0) player.slamCd -= ts;
     if(screenShake > 0) screenShake *= 0.9;
 
-    // --- New Skill Logic ---
+    // --- Special Skills Logic ---
     if(stats.omegaLaser) {
         player.laserCd -= ts;
-        if(player.laserCd <= 0) {
-            fireOmegaLaser();
-            player.laserCd = 180; // 3 seconds
+        if(player.laserCd <= 0) { fireOmegaLaser(); player.laserCd = 180; }
+    }
+    if(stats.earthquake) {
+        earthquakeTimer -= ts;
+        if(earthquakeTimer <= 0) {
+            earthquakeTimer = 120; // 2 seconds
+            screenShake = 15; Sound.play('bash');
+            enemies.forEach(e => { if(!e.dead) damageEnemy(e, stats.dmg * 2); });
+            particles.push({type:'shockwave', x:player.x, y:player.y, size:400, life:30, color:'#f80'});
         }
     }
-    if(stats.absoluteZero) {
-        enemies.forEach(e => {
-            if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 250) {
-                e.frozen = 5; 
-            }
-        });
-        if(Math.random() < 0.2*ts && particles.length < MAX_PARTICLES) createParticles(player.x + (Math.random()-0.5)*500, player.y + (Math.random()-0.5)*500, '#88ffff', 1, 1);
+    if(stats.orbital && Math.random() < 0.05 * ts) {
+        // Random Orbital Strike
+        let t = enemies[Math.floor(Math.random()*enemies.length)];
+        if(t && !t.dead) {
+            createParticles(t.x, t.y, '#f0f', 10, 3);
+            damageEnemy(t, stats.dmg * 5);
+            Sound.play('laser');
+            particles.push({type:'shockwave', x:t.x, y:t.y, size:50, life:10, color:'#f0f'});
+        }
     }
 
     if(Math.random() < (1/60) * ts && player.hp < player.maxHp) {
@@ -386,10 +409,7 @@ function update(ts) {
     if(keys['a'] || keys['ArrowLeft']) dx = -1;
     if(keys['d'] || keys['ArrowRight']) dx = 1;
 
-    if(joyTouchId !== null) {
-        dx = joyMoveX;
-        dy = joyMoveY;
-    }
+    if(joyTouchId !== null) { dx = joyMoveX; dy = joyMoveY; }
 
     if(dx!==0 || dy!==0) {
         let len = Math.hypot(dx, dy);
@@ -401,16 +421,17 @@ function update(ts) {
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
 
     // --- Skills ---
-    if(player.class === 'Melee' && stats.multi > 0) {
-        if(spikeBits.length !== stats.multi) {
-            spikeBits = []; for(let i=0; i<stats.multi; i++) spikeBits.push({angle:0});
+    if(player.class === 'Melee' && (stats.multi > 0 || stats.bladeStorm)) {
+        let count = stats.multi + (stats.bladeStorm ? 4 : 0);
+        if(spikeBits.length !== count) {
+            spikeBits = []; for(let i=0; i<count; i++) spikeBits.push({angle:0});
         }
         let rotSpd = 0.1 * ts;
         spikeBits.forEach((bit, i) => {
             bit.angle += rotSpd;
-            let currentAngle = bit.angle + (Math.PI*2/stats.multi)*i;
-            bit.x = player.x + Math.cos(currentAngle) * (25 + player.size/2);
-            bit.y = player.y + Math.sin(currentAngle) * (25 + player.size/2);
+            let currentAngle = bit.angle + (Math.PI*2/count)*i;
+            bit.x = player.x + Math.cos(currentAngle) * (25 + player.size/2 + (stats.titan ? 20 : 0));
+            bit.y = player.y + Math.sin(currentAngle) * (25 + player.size/2 + (stats.titan ? 20 : 0));
             enemies.forEach(e => {
                 if(!e.dead && Math.hypot(e.x-bit.x, e.y-bit.y) < 15 + e.size) {
                     if(Math.random() < 0.1 * ts) damageEnemy(e, stats.dmg * 0.5);
@@ -498,8 +519,8 @@ function update(ts) {
                         triggerLightning(e, stats.lightning);
                     }
                 }
-                if(stats.gravityAura) {
-                    let pull = 1.0 * ts; 
+                if(stats.gravityAura || stats.blackHole) {
+                    let pull = (stats.blackHole ? 3.0 : 1.0) * ts; 
                     e.x += (player.x - e.x) / dist * pull;
                     e.y += (player.y - e.y) / dist * pull;
                     e.x -= Math.cos(Math.atan2(player.y-e.y, player.x-e.x)) * (e.speed*0.5) * ts; 
@@ -519,11 +540,8 @@ function update(ts) {
     for(let i=bullets.length-1; i>=0; i--) {
         let b = bullets[i];
         
-        // ★ Optimized Omega Laser
         if(b.type === 'omega') {
-            b.x += b.vx * ts; b.y += b.vy * ts;
-            b.life -= ts;
-            // Throttle damage tick (every 5 frames instead of every frame)
+            b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts;
             b.tick = (b.tick || 0) + ts;
             if(b.tick >= 5) {
                 b.tick = 0;
@@ -539,13 +557,11 @@ function update(ts) {
         }
 
         if(b.type === 'chakram') {
-            b.x += b.vx * ts; b.y += b.vy * ts;
-            b.life -= ts; 
+            b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts; 
             if(b.life <= 0) { bullets.splice(i, 1); continue; }
             if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
             if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
-
-            let hit = false;
+            // Chakram bounce logic
             for(let j=enemies.length-1; j>=0; j--) {
                 let e = enemies[j];
                 if(e.dead || b.hit.includes(e.id)) continue;
@@ -601,6 +617,12 @@ function update(ts) {
         } else {
             b.x += b.vx * ts; b.y += b.vy * ts;
         }
+
+        // Shot Bounce (Assault Skill)
+        if(stats.shotBounce && (b.type === 'normal')) {
+            if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
+            if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
+        }
         
         if(b.x < -boundary || b.x > canvas.width+boundary || b.y < -boundary || b.y > canvas.height+boundary) { bullets.splice(i, 1); continue; }
 
@@ -610,6 +632,7 @@ function update(ts) {
             if(e.dead || b.hit.includes(e.id)) continue;
             
             let bulletHitSize = (player.class === 'Sniper' && b.type === 'normal') ? b.size + 15 : b.size;
+            if(stats.titan) bulletHitSize *= 1.5;
 
             if(Math.hypot(b.x-e.x, b.y-e.y) < bulletHitSize + e.size) {
                 if(b.type === 'missile') {
@@ -627,10 +650,22 @@ function update(ts) {
                     bullets.splice(i, 1); hit = true; break;
                 } else {
                     damageEnemy(e, stats.dmg);
+                    
+                    if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; // Sniper Skill
+                    if(stats.shotExplode) { // Assault Skill
+                        Sound.play('explode', 2.0);
+                        enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < 50) damageEnemy(subE, stats.dmg*0.5); });
+                        createParticles(e.x, e.y, '#fa0', 3, 2);
+                    }
                     if(stats.napalm && Math.random()<0.2) gasClouds.push({x:e.x, y:e.y, r:20, life:100, dmg:stats.dmg*0.2});
                     
-                    if(stats.splitShot && !b.isMini) {
+                    if(stats.splitHit && !b.isMini) { // Sniper Skill
                         for(let k=0; k<2; k++) {
+                            let ang = (Math.random()*Math.PI*2);
+                            bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true});
+                        }
+                    } else if(stats.splitShot && !b.isMini) { // Standard Upgrade
+                         for(let k=0; k<2; k++) {
                             let ang = (Math.random()*Math.PI*2);
                             bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true});
                         }
@@ -682,7 +717,7 @@ function update(ts) {
         bossCycleCounter = cycleWave;
         bossWarningActive = false;
         document.getElementById('warning-overlay').style.display = 'none';
-        spawnEnemy('boss', gameTimeSec); // ★ Force Spawn Boss
+        spawnEnemy('boss', gameTimeSec); 
     }
 
     enemies.forEach(e => {
@@ -722,6 +757,10 @@ function update(ts) {
                 if(stats.spikeArmor && Math.random() < 0.2 * ts) {
                     damageEnemy(e, stats.dmg * 0.5);
                     if(particles.length < MAX_PARTICLES) createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
+                }
+                if(stats.spikeReflect) { // Melee Skill
+                    damageEnemy(e, e.dmg * 2.0);
+                    Sound.play('hit');
                 }
 
                 if(player.class === 'Melee' && player.slamCd <= 0) {
@@ -775,31 +814,25 @@ function update(ts) {
     }
 }
 
-// --- UPDATED SHOOT FUNCTION (AUTO AIM) ---
 function shoot() {
-    // Find nearest enemy
     let target = null;
     let minD = Infinity;
     
     enemies.forEach(e => {
         if (e.dead) return;
         let d = Math.hypot(e.x - player.x, e.y - player.y);
-        if (d < minD) {
-            minD = d;
-            target = e;
-        }
+        if (d < minD) { minD = d; target = e; }
     });
 
     let angle;
-    if (target) {
-        angle = Math.atan2(target.y - player.y, target.x - player.x);
-    } else {
-        // If no enemies, shoot randomly to show activity
-        angle = Math.random() * Math.PI * 2;
-    }
+    if (target) { angle = Math.atan2(target.y - player.y, target.x - player.x); } 
+    else { angle = Math.random() * Math.PI * 2; }
 
     let count = stats.multi;
     if(player.class === 'Sniper') count = 1; 
+    if(stats.infiniteMag) count += 3; // Assault Skill
+
+    if(stats.doubleShot && Math.random() < 0.5) count *= 2; // Assault Skill
 
     let spread = 0.1; 
     let startAngle = angle - (spread * (count-1)) / 2;
@@ -815,13 +848,18 @@ function shoot() {
             y: player.y,
             vx: vx,
             vy: vy,
-            size: 5,
+            size: stats.railgun ? 10 : 5,
             color: '#fff',
             hit: [],
             pierce: stats.pierce,
             isMini: false
         });
     }
+
+    if(stats.missileChance > 0 && Math.random() < stats.missileChance) { // Assault Skill
+        fireMissile();
+    }
+
     Sound.play('shoot', 1.0 + Math.random()*0.2);
 }
 
@@ -838,25 +876,19 @@ function dash() {
     
     if(joyTouchId !== null) { dx = joyMoveX; dy = joyMoveY; }
     
-    // Default dash right if no input
     if(dx === 0 && dy === 0) dx = 1; 
 
     let len = Math.hypot(dx, dy);
     if(len > 0) { dx /= len; dy /= len; }
 
-    // Teleport dash
     player.x += dx * 100;
     player.y += dy * 100;
-    
-    // Bound check
     player.x = Math.max(15, Math.min(canvas.width-15, player.x));
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
     
     createParticles(player.x, player.y, '#fff', 10, 2);
     Sound.play('dash'); 
 }
-
-// ------------------------------------
 
 function fireMissile() {
     Sound.play('missile');
@@ -866,11 +898,7 @@ function fireMissile() {
 function fireOmegaLaser() {
     Sound.play('laser');
     screenShake = 10;
-    // Fires a massive bullet that covers screen height
-    let w = 100;
-    // Tick counter for throttling damage
     bullets.push({ type: 'omega', x: player.x, y: player.y, vx: 50, vy: 0, size: 300, life: 30, hit: [], tick: 0 });
-    // Visual effect
     particles.push({type:'shockwave', x:player.x, y:player.y, size:100, life:20, color:'#f0f'});
 }
 
@@ -917,7 +945,6 @@ function draw() {
 
     ctx.fillStyle = '#050505'; ctx.fillRect(-20, -20, canvas.width+40, canvas.height+40);
     
-    // Grid
     ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1; ctx.beginPath();
     for(let i=0; i<canvas.width; i+=100) { ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); }
     for(let i=0; i<canvas.height; i+=100) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
@@ -944,8 +971,11 @@ function draw() {
         let grad = ctx.createRadialGradient(0, 0, r*0.5, 0, 0, r);
         grad.addColorStop(0, 'rgba(0, 255, 255, 0)'); grad.addColorStop(0.8, 'rgba(0, 255, 255, 0.2)');
         if(stats.gravityAura) grad.addColorStop(0.9, 'rgba(100, 0, 200, 0.4)'); 
+        if(stats.blackHole) { grad.addColorStop(1, 'rgba(0, 0, 0, 0.6)'); ctx.strokeStyle='#f0f'; } 
+        else ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+        
         ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)'; ctx.lineWidth = 2;
+        ctx.lineWidth = 2;
         ctx.beginPath(); for(let i=0; i<3; i++) { ctx.rotate(Math.PI*2/3); ctx.moveTo(r * 0.6, 0); ctx.lineTo(r, 0); }
         ctx.stroke(); ctx.restore();
     }
@@ -969,18 +999,14 @@ function draw() {
     bullets.forEach(b => { 
         if(b.type === 'omega') {
             ctx.fillStyle = `rgba(255, 0, 255, ${b.life/30})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height); // flash
-            ctx.fillStyle = '#fff';
-            let lh = 50;
-            ctx.fillRect(0, b.y - lh/2, canvas.width, lh);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, b.y - 50, canvas.width, 100);
         }
         else if(b.type === 'missile') {
             ctx.fillStyle = '#f80'; ctx.beginPath(); ctx.moveTo(b.x, b.y-8); ctx.lineTo(b.x+6, b.y+6); ctx.lineTo(b.x-6, b.y+6); ctx.fill();
         } else if(b.type === 'chakram') {
-            ctx.fillStyle = '#0ff'; 
-            ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Date.now() * 0.2);
-            ctx.fillRect(-b.size/2, -b.size/2, b.size, b.size);
-            ctx.restore();
+            ctx.fillStyle = '#0ff'; ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Date.now() * 0.2);
+            ctx.fillRect(-b.size/2, -b.size/2, b.size, b.size); ctx.restore();
         } else if(b.type === 'spirit') {
             ctx.fillStyle = '#8f8'; ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI*2); ctx.fill();
         } else {
@@ -989,13 +1015,12 @@ function draw() {
             ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, drawSize, 0, Math.PI*2); ctx.fill(); 
         }
     });
-    // Enemy Bullets (Pink for visibility)
+    
     ctx.shadowBlur = 10; ctx.shadowColor = '#f00'; 
     ctx.fillStyle = '#fff'; 
     enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
     ctx.shadowBlur = 0;
 
-    // Enemies (Unified Red, No Outline)
     enemies.forEach(e => {
         ctx.fillStyle = e.frozen > 0 ? '#0ff' : (e.flash > 0 ? '#fff' : e.color); 
         ctx.beginPath();
@@ -1039,7 +1064,7 @@ function draw() {
 }
 
 function spawnEnemy(mode, time) {
-    if(enemies.length >= MAX_ENEMIES && mode !== 'boss') return; // Bypass limit for boss
+    if(enemies.length >= MAX_ENEMIES && mode !== 'boss') return; 
 
     let dist = Math.max(canvas.width, canvas.height)/2 + 50;
     let ang = Math.random()*Math.PI*2;
@@ -1055,11 +1080,11 @@ function spawnEnemy(mode, time) {
 function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0 };
     
-    // Adjusted Boss HP Scaling (Less Exponential)
     let hpMult = Math.pow(1.10, level - 1); 
 
     if(type === 'boss') { 
-        e.hp = 10000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
+        // ★ Boss Weakened (3000 Base)
+        e.hp = 3000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
         e.hp *= (1 + bossCycleCounter * 0.3); 
         e.dmg = 50 + (level * 2);
     }
@@ -1085,10 +1110,11 @@ function triggerWarning() {
 function damageEnemy(e, dmg) {
     if(e.dead) return; 
     let isCrit = false;
-    if(Math.random() < stats.critChance) { dmg *= 3; isCrit = true; }
+    if(Math.random() < stats.critChance || stats.deadeye) { dmg *= (stats.deadeye ? 3 : 2); isCrit = true; } // Sniper Skill
     
     if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
-    if(stats.executioner && (e.hp < e.maxHp * 0.2)) dmg = e.hp + 999; // Execution
+    if(stats.executioner && (e.hp < e.maxHp * 0.2)) dmg = e.hp + 999; 
+    if(stats.execute && (e.hp < e.maxHp * 0.3)) dmg = e.hp + 9999; // Sniper Skill
 
     e.hp -= dmg; e.flash = 5; 
     if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 2, 2); 
@@ -1101,9 +1127,11 @@ function damageEnemy(e, dmg) {
         if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?50:15, 5);
         particles.push({type:'shockwave', x:e.x, y:e.y, size:10, life:15, color:'#fff'});
         
-        // Necromancer: Spawn Spirit
         if(stats.necromancer) {
             bullets.push({type: 'spirit', x: e.x, y: e.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
+        }
+        if(stats.bloodLust) { // Melee Skill
+             player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01);
         }
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
@@ -1120,7 +1148,6 @@ function damageEnemy(e, dmg) {
         else if(e.ai === 'tank') val = Math.max(300, baseVal * 3);
 
         let orbType = { val: val, color: '#0ff', size: 4, pitch: 1.0 }; 
-
         if(val >= 20000) orbType = { val: val, color: '#f0f', size: 16, pitch: 0.5 }; 
         else if(val >= 10000) orbType = { val: val, color: '#f00', size: 14, pitch: 0.6 }; 
         else if(val >= 3000) orbType = { val: val, color: '#f80', size: 12, pitch: 0.7 }; 
@@ -1153,18 +1180,47 @@ function showMilestone() {
     Sound.play('milestone');
     let m = document.getElementById('menu-overlay'); let c = document.getElementById('card-area');
     c.innerHTML = ''; m.style.display = 'flex';
-    document.querySelector('#menu-title').innerText = "覚醒 (Lv"+level+")";
+    document.querySelector('#menu-title').innerText = "禁断の力 (Lv"+level+")";
 
-    // New "Unique" Skills
+    // Common Unique
     let pool = [
         {t:"⚡ オメガ・レーザー", d:"3秒ごとに画面を薙ぎ払う", f:()=>{stats.omegaLaser=true;}},
-        {t:"❄️ アブソリュート・ゼロ", d:"周囲の敵を凍結停止させる", f:()=>{stats.absoluteZero=true;}},
         {t:"💀 ネクロマンサー", d:"敵撃破時に追尾怨霊を召喚", f:()=>{stats.necromancer=true;}},
         {t:"🩸 血の契約", d:"HPが1になる / 攻撃力5倍", f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;}},
-        {t:"🔪 処刑人", d:"HP20%以下の敵を即死", f:()=>{stats.executioner=true;}},
         {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間 3倍", f:()=>{player.invincible=60;}}
     ];
 
+    // Class Specific Pools (6 items each)
+    if(player.class === 'Assault') {
+        pool = [
+            {t:"💣 爆裂弾", d:"通常弾が着弾時に爆発する", f:()=>{stats.shotExplode=true;}},
+            {t:"↩️ 跳弾", d:"弾が画面端で跳ね返る", f:()=>{stats.shotBounce=true;}},
+            {t:"👯 ダブルトリガー", d:"50%の確率で2回発射", f:()=>{stats.doubleShot=true;}},
+            {t:"🚀 ミサイル祭", d:"射撃時に20%でミサイル発射", f:()=>{stats.missileChance=0.2;}},
+            {t:"♾️ 無限マガジン", d:"発射数+3 / リロードなし", f:()=>{stats.infiniteMag=true;}},
+            {t:"⚙️ ガトリング", d:"連射速度限界突破", f:()=>{stats.rate=Math.max(1, stats.rate-10); stats.gatling=true;}}
+        ];
+    } else if(player.class === 'Melee') {
+        pool = [
+            {t:"🦍 タイタン", d:"HP2倍 / サイズ1.5倍", f:()=>{player.maxHp*=2; player.hp*=2; player.size*=1.5; stats.titan=true;}},
+            {t:"⚫ ブラックホール", d:"オーラの吸引力が超強化", f:()=>{stats.blackHole=true;}},
+            {t:"⚔️ ブレードストーム", d:"回転刃+4枚追加", f:()=>{stats.bladeStorm=true;}},
+            {t:"🌎 アースクエイク", d:"2秒ごとに全体攻撃", f:()=>{stats.earthquake=true;}},
+            {t:"🌵 スパイクリフレクト", d:"接触ダメージを2倍で反射", f:()=>{stats.spikeReflect=true;}},
+            {t:"🧛 ブラッドラスト", d:"敵撃破時にHP1%回復", f:()=>{stats.bloodLust=true;}}
+        ];
+    } else if(player.class === 'Sniper') {
+        pool = [
+            {t:"🚅 レールガン", d:"弾速2倍 / サイズ2倍 / 無限貫通", f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;}},
+            {t:"🔪 処刑人", d:"HP30%以下の敵を即死", f:()=>{stats.execute=true;}},
+            {t:"👁️ デッドアイ", d:"確定クリティカル / 倍率強化", f:()=>{stats.deadeye=true;}},
+            {t:"❄️ 絶対零度", d:"攻撃時30%で敵を凍結", f:()=>{stats.absoluteZero=true;}},
+            {t:"☄️ 天罰", d:"ランダムに衛星レーザーが降り注ぐ", f:()=>{stats.orbital=true;}},
+            {t:"✨ 分裂弾", d:"着弾時に弾が分裂する", f:()=>{stats.splitHit=true;}}
+        ];
+    }
+
+    // Pick 3 Random
     pool.sort(() => Math.random() - 0.5);
     let opts = pool.slice(0, 3);
 
@@ -1277,10 +1333,12 @@ function updateUI() {
 function updateSkillList() {
     let list = document.getElementById('skill-list');
     let html = "";
+    // Display significant active skills
     if(stats.omegaLaser) html += `<div style="color:#f0f">⚡ OMEGA LASER</div>`;
-    if(stats.absoluteZero) html += `<div style="color:#0ff">❄️ ZERO AURA</div>`;
-    if(stats.necromancer) html += `<div style="color:#8f8">💀 NECRO</div>`;
-    if(stats.executioner) html += `<div style="color:#f00">🔪 EXECUTE</div>`;
+    if(stats.titan) html += `<div style="color:#f00">🦍 TITAN</div>`;
+    if(stats.gatling) html += `<div style="color:#0ff">⚙️ GATLING</div>`;
+    if(stats.railgun) html += `<div style="color:#ff0">🚅 RAILGUN</div>`;
+    
     if(stats.missile > 0) html += `<div style="color:#fa0">🚀 ミサイル Lv${stats.missile}</div>`;
     if(stats.drones > 0) html += `<div style="color:#ff0">🛰️ ドローン x${stats.drones}</div>`;
     if(stats.auraScale > 1) html += `<div style="color:#f00">🛡️ オーラ倍率 x${stats.auraScale.toFixed(1)}</div>`;
