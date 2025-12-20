@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.1.0: Unique Evolution</title>
+    <title>Evo Lite v3.1.1: Golem Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -105,7 +105,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.1.0 UNIQUE EVOLUTION</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v3.1.1 GOLEM UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -1471,6 +1471,10 @@ function draw() {
         if(e.type === 'boss') {
             ctx.shadowBlur = 20; ctx.shadowColor = 'red'; ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); ctx.shadowBlur = 0;
             ctx.fillStyle = 'red'; ctx.fillRect(e.x-40, e.y-e.size-20, 80, 8); ctx.fillStyle = '#0f0'; ctx.fillRect(e.x-40, e.y-e.size-20, 80*(e.hp/e.maxHp), 8);
+        } else if(e.type === 'golem') {
+            // Golem: Square shape
+            ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
         } else {
             if(e.ai === 'dasher') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y+e.size); ctx.lineTo(e.x-e.size, e.y+e.size); ctx.closePath(); }
             else if(e.ai === 'splitter') { ctx.rect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); }
@@ -1515,8 +1519,19 @@ function spawnEnemy(mode, time) {
     let ex = player.x + Math.cos(ang)*dist; let ey = player.y + Math.sin(ang)*dist; let type = mode;
     if(mode === 'random') {
         let r = Math.random();
+        
+        // ★ Golem Spawn Logic
+        let canGolem = level >= 50;
+        
         let canSplitter = time > 45; let canBat = time > 90; let canDasher = time > 120; let canShooter = time > 150; let canTank = time > 180;
-        if(canTank && r < 0.05) type = 'tank'; else if(canShooter && r < 0.15) type = 'shooter'; else if(canDasher && r < 0.25) type = 'dasher'; else if(canSplitter && r < 0.35) type = 'splitter'; else if(canBat && r < 0.5) type = 'bat'; else type = 'normal';
+        
+        if(canGolem && r < 0.08) type = 'golem'; 
+        else if(canTank && r < 0.15) type = 'tank'; 
+        else if(canShooter && r < 0.25) type = 'shooter'; 
+        else if(canDasher && r < 0.35) type = 'dasher'; 
+        else if(canSplitter && r < 0.45) type = 'splitter'; 
+        else if(canBat && r < 0.6) type = 'bat'; 
+        else type = 'normal';
     }
     createEnemy(type, ex, ey);
 }
@@ -1531,6 +1546,12 @@ function createEnemy(type, x, y) {
         e.hp = 3000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
         e.hp *= (1 + bossCycleCounter * 0.3); 
         e.dmg = 50 + (level * 2);
+    }
+    else if(type === 'golem') {
+        e.hp = 450 * hpMult; e.maxHp = e.hp; 
+        e.size = 25; e.color = '#2F4F4F'; 
+        e.speed = (2.0 + (level * 0.01)) * 0.3; 
+        e.ai = 'normal'; e.type = 'golem';
     }
     else if(type === 'dasher') { e.hp = 25 * hpMult; e.maxHp = e.hp; e.size = 18; e.color = '#ff3333'; e.speed = 2.5 + (level * 0.02); e.ai='dasher'; e.state='chase'; }
     else if(type === 'splitter') { e.hp = 20 * hpMult; e.maxHp = e.hp; e.size = 20; e.color = '#ff3333'; e.speed = 1.2 + (level * 0.01); e.ai='splitter'; }
