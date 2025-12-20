@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.8.0: Magnet Update</title>
+    <title>Evo Lite v2.8.1: EXP Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -100,7 +100,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.8.0 MAGNET UPDATE</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.8.1 EXP FIX</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -115,7 +115,7 @@
 // --- Config ---
 const MAX_ENEMIES = 1000;
 const MAX_PARTICLES = 500; 
-const MAX_ORBS = 400;
+const MAX_ORBS = 400; // オーブの上限数
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 32; 
 
@@ -247,7 +247,7 @@ let singularityMode = false;
 let sentries = [];
 let sentryTimer = 0;
 
-// ★ NEW: Items array for drops like Magnets
+// Items
 let items = [];
 
 let player = {
@@ -416,7 +416,6 @@ function update(ts) {
         sentries.forEach(s => {
             s.cooldown -= ts;
             if(s.cooldown <= 0) {
-                // Sentry Shoot
                 let target = null;
                 let minD = 400;
                 enemies.forEach(e => {
@@ -898,10 +897,11 @@ function update(ts) {
     
     enemies = enemies.filter(e => !e.dead);
 
-    // ★ XP Orbs & Magnet Logic
+    // ★ XP Orbs & Magnet Logic Fix
     if(expOrbs.length > MAX_ORBS) {
         let removed = expOrbs.splice(0, expOrbs.length - MAX_ORBS);
-        removed.forEach(o => { if(gameActive) addExp(o.val * 0.5, true); });
+        // ★ 100% Auto Collect
+        removed.forEach(o => { if(gameActive) addExp(o.val, true); });
     }
     for(let i=expOrbs.length-1; i>=0; i--) {
         if(!gameActive) break; 
@@ -909,9 +909,8 @@ function update(ts) {
         
         let d = Math.hypot(player.x - o.x, player.y - o.y);
 
-        // ★ If collected by Magnet item, force move
         if(o.forceCollect) {
-            o.x += (player.x - o.x) * 0.2 * ts; // High speed
+            o.x += (player.x - o.x) * 0.2 * ts; 
             o.y += (player.y - o.y) * 0.2 * ts;
         } else if(d < stats.magnet) {
             o.x += (player.x - o.x) * 0.25 * ts; 
@@ -921,11 +920,9 @@ function update(ts) {
         if(d < 20) { addExp(o.val); Sound.play('exp', o.pitch); expOrbs.splice(i, 1); }
     }
 
-    // ★ New Item Loop (Magnet, etc.)
     for(let i=items.length-1; i>=0; i--) {
         let it = items[i];
         let d = Math.hypot(player.x - it.x, player.y - it.y);
-        // Items always have magnetic pull
         if(d < 200) {
             it.x += (player.x - it.x) * 0.1 * ts;
             it.y += (player.y - it.y) * 0.1 * ts;
@@ -934,7 +931,6 @@ function update(ts) {
             if(it.type === 'magnet') {
                 Sound.play('powerup');
                 particles.push({type:'shockwave', x:player.x, y:player.y, size:500, life:30, color:'#fff'});
-                // Trigger Magnet on all existing orbs
                 expOrbs.forEach(o => o.forceCollect = true);
             }
             items.splice(i, 1);
@@ -1034,7 +1030,6 @@ function dash() {
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
     
     if(stats.clusterMine) {
-         // Drop mines behind
          for(let i=0; i<3; i++) {
              let mx = player.x - dx * (20 + i*10);
              let my = player.y - dy * (20 + i*10);
@@ -1094,7 +1089,7 @@ function createLightningEffect(x1, y1, x2, y2) {
 
 function takeDamage(dmg) {
     if(stats.forceField && stats.forceFieldCd <= 0) {
-        stats.forceFieldCd = 300; // 5 sec cooldown
+        stats.forceFieldCd = 300; 
         Sound.play('bounce');
         particles.push({type:'shockwave', x:player.x, y:player.y, size:50, life:20, color:'#0ff'});
         return; 
@@ -1401,9 +1396,10 @@ function damageEnemy(e, dmg) {
         
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
-        if(expOrbs.length < MAX_ORBS) expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
+        
+        // ★ FIX: Always push exp, even if maxed out (handled in update)
+        expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
 
-        // ★ Chance to drop Magnet (0.2%)
         if(Math.random() < 0.002) {
              items.push({type: 'magnet', x: e.x, y: e.y});
         }
