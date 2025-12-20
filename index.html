@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.1.3: Rare & Percent Update</title>
+    <title>Evo Lite v3.1.4: Guardian & Bomb Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -37,6 +37,7 @@
         /* Overlays */
         #warning-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, transparent 40%, rgba(200,0,0,0.7) 100%); animation: pulseRed 0.2s infinite alternate; justify-content: center; align-items: center; flex-direction: column; z-index: 10; }
         #warning-text { color: #ff0000; font-size: 60px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 0 20px red; transform: scale(1); animation: textZoom 0.1s infinite alternate; text-align: center; }
+        #bomb-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 15; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
         @keyframes pulseRed { from { opacity: 0.2; } to { opacity: 0.8; } }
         @keyframes textZoom { from { transform: scale(0.95); } to { transform: scale(1.05); } }
         
@@ -107,6 +108,8 @@
     <div style="color:white; font-size:20px; margin-top:10px; font-weight:bold;">BOSS DETECTED</div>
 </div>
 
+<div id="bomb-overlay"></div>
+
 <div id="menu-overlay">
     <h1 id="menu-title" style="color:white; font-size:32px; margin-bottom: 20px; text-shadow: 0 0 15px #0ff;">LEVEL UP!</h1>
     <div class="card-container" id="card-area"></div>
@@ -114,7 +117,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#ffd700; font-weight:normal; font-size:16px;">v3.1.3 RARE & PERCENT UPDATE</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v3.1.4 GUARDIAN & BOMB UPDATE</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -220,6 +223,8 @@ const Sound = {
             duration = 0.15; osc.type='sawtooth'; osc.frequency.setValueAtTime(2000, now); osc.frequency.linearRampToValueAtTime(500, now+0.15); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now+0.15);
         } else if(type === 'powerup') {
             duration = 0.5; osc.type='sine'; osc.frequency.setValueAtTime(440, now); osc.frequency.linearRampToValueAtTime(880, now+0.25); osc.frequency.linearRampToValueAtTime(1760, now+0.5); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
+        } else if(type === 'bomb') {
+            duration = 1.0; osc.type='sawtooth'; osc.frequency.setValueAtTime(50, now); osc.frequency.linearRampToValueAtTime(20, now+1.0); gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0, now+1.0);
         }
         osc.start(now); osc.stop(now + duration);
         Sound.activeEndTimes.push(now + duration + 0.05);
@@ -437,10 +442,11 @@ function update(ts) {
     
     // Guardian Skills Update
     if(stats.sentrySystem) {
+        let sentrySpawnRate = 600 / stats.sentryRate; 
         sentryTimer -= ts;
         if(sentryTimer <= 0) {
             spawnSentry();
-            sentryTimer = 600; // 10 seconds default
+            sentryTimer = sentrySpawnRate; 
         }
         sentries.forEach(s => {
             s.cooldown -= ts;
@@ -454,11 +460,11 @@ function update(ts) {
                 });
                 if(target) {
                     let ang = Math.atan2(target.y - s.y, target.x - s.x);
-                    // Sentry Rate Mod (Engineer)
-                    let fireDelay = stats.rate * (1/stats.sentryRate);
+                    // Sentry Rate Mod (Guardian Buff)
+                    let fireDelay = Math.max(5, stats.rate * (1/stats.sentryRate));
                     bullets.push({type:'normal', x:s.x, y:s.y, vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, size:6, color:'#0f0', hit:[], pierce:stats.pierce});
                     Sound.play('shoot', 1.5);
-                    s.cooldown = Math.max(10, fireDelay);
+                    s.cooldown = fireDelay;
                 }
             }
         });
@@ -1061,6 +1067,7 @@ function update(ts) {
                 if(stats.spikeReflect) { 
                     damageEnemy(e, e.dmg * 2.0);
                     Sound.play('hit');
+                    if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#0f0', 3, 2);
                 }
                 
                 // Earth Shaker Collision
@@ -1129,6 +1136,8 @@ function update(ts) {
                 Sound.play('powerup');
                 particles.push({type:'shockwave', x:player.x, y:player.y, size:500, life:30, color:'#fff'});
                 expOrbs.forEach(o => o.forceCollect = true);
+            } else if(it.type === 'bomb') {
+                triggerBomb();
             }
             items.splice(i, 1);
         }
@@ -1148,6 +1157,22 @@ function update(ts) {
         texts[i].y -= 1 * ts; texts[i].life -= ts;
         if(texts[i].life<=0) texts.splice(i, 1);
     }
+}
+
+function triggerBomb() {
+    Sound.play('bomb');
+    let overlay = document.getElementById('bomb-overlay');
+    overlay.style.display = 'block';
+    overlay.style.opacity = '0.8';
+    setTimeout(() => { overlay.style.opacity = '0'; setTimeout(()=>overlay.style.display='none', 500); }, 100);
+
+    enemies.forEach(e => {
+        if(!e.dead && e.type !== 'boss') {
+            damageEnemy(e, e.hp + 9999);
+            createParticles(e.x, e.y, '#fff', 5, 5);
+        }
+    });
+    screenShake = 30;
 }
 
 function shoot() {
@@ -1434,14 +1459,13 @@ function draw() {
 
     // ★ Draw Items
     items.forEach(it => {
-        if(it.type === 'magnet') {
-            ctx.save(); ctx.translate(it.x, it.y);
-            let s = 1.0 + Math.sin(Date.now()*0.01)*0.2;
-            ctx.scale(s, s);
-            ctx.font = '24px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline='middle';
-            ctx.fillText('🧲', 0, 0);
-            ctx.restore();
-        }
+        ctx.save(); ctx.translate(it.x, it.y);
+        let s = 1.0 + Math.sin(Date.now()*0.01)*0.2;
+        ctx.scale(s, s);
+        ctx.font = '24px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline='middle';
+        if(it.type === 'magnet') ctx.fillText('🧲', 0, 0);
+        else if(it.type === 'bomb') ctx.fillText('💣', 0, 0);
+        ctx.restore();
     });
 
     if(player.invincible % 10 < 5) {
@@ -1668,6 +1692,10 @@ function damageEnemy(e, dmg) {
         if(Math.random() < 0.002) {
              items.push({type: 'magnet', x: e.x, y: e.y});
         }
+        // ★ Bomb Drop
+        if(Math.random() < 0.0005) {
+             items.push({type: 'bomb', x: e.x, y: e.y});
+        }
     }
 }
 
@@ -1742,7 +1770,7 @@ function showSecondEvo() {
             {t:"⚡ テスラ・エンジニア", d:"電気柵: 設置したタレット同士が「高圧電流」で接続され、触れた敵を焼き尽くす。", f:()=>{
                 player.subClass = 'TeslaEngineer';
                 stats.teslaGrid = true;
-                stats.sentryMax = 8;
+                stats.sentryMax = 12; // さらに増える
                 player.color = "#00ffcc";
             }},
             {t:"🦍 アース・シェイカー", d:"重戦車: 巨大化し、歩くだけで足元に衝撃波が発生。敵を弾き飛ばし粉砕する。", f:()=>{
@@ -1967,14 +1995,16 @@ function showEvo() {
             stats.shrapnel=true; 
             stats.knockback=1; 
         }},
-        {t:"🧱 ガーディアン", d:"要塞: 吸引・装甲+10・タレット3倍速", f:()=>{
+        {t:"🧱 ガーディアン", d:"機動要塞: タレット8基展開・反射装甲・高耐久", f:()=>{
             player.class="Guardian"; player.color="#00ff88"; 
-            stats.armor+=10; // ほぼ無敵
-            player.maxHp+=1000; player.hp=player.maxHp; 
+            stats.armor+=20; // ほぼ無敵
+            player.maxHp+=1500; player.hp=player.maxHp; 
             stats.spd-=0.5; 
             stats.magnet+=200; // 動かなくていい
-            stats.sentryRate=3.0; // タレットが暴れる
+            stats.sentryRate=5.0; // タレットが暴れる
+            stats.sentryMax=8; // 8個置ける
             stats.sentrySystem=true; spawnSentry();
+            stats.spikeReflect=true; // 反射ダメージ
         }}
     ];
 
