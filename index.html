@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v2.6.0: Singularity</title>
+    <title>Evo Lite v2.6.1: Balanced</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -100,7 +100,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.6.0 SINGULARITY</h2>
+    <h2 style="color:#0ff; font-weight:normal; font-size:16px;">v2.6.1 BALANCED</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -171,7 +171,6 @@ const Sound = {
         osc.connect(gain);
         gain.connect(actx.destination);
 
-        // Pitch shift for Singularity Mode
         if(level >= 100) pitch *= 0.8;
 
         let duration = 0.1;
@@ -264,22 +263,15 @@ let stats = {
     napalm: false, spikeArmor: false, dashNova: false, 
     splitShot: false, giantSlayer: false,
     armor: 0, 
-    // ★ New Sniper Stats
     knockback: 0, shrapnel: false, 
     
-    // Forbidden Skills (Assault)
+    // Forbidden Skills
     shotExplode: false, shotBounce: false, doubleShot: false, 
     missileChance: 0, infiniteMag: false, gatling: false,
-
-    // Forbidden Skills (Melee)
     titan: false, blackHole: false, bladeStorm: false, 
     earthquake: false, spikeReflect: false, bloodLust: false,
-
-    // Forbidden Skills (Sniper)
     railgun: false, execute: false, deadeye: false, 
     electroFence: false, chainBurst: false, orbital: false,
-
-    // Generic
     omegaLaser: false, absoluteZero: false, necromancer: false
 };
 
@@ -385,7 +377,6 @@ function loop(timestamp) {
 function update(ts) {
     let gameTimeSec = (Date.now() - startTime) / 1000;
     
-    // Check Singularity (Lv100)
     if(level >= 100 && !singularityMode) {
         singularityMode = true;
         document.body.classList.add('singularity-mode');
@@ -669,6 +660,11 @@ function update(ts) {
             if(Math.random() < 0.5 * ts && particles.length < MAX_PARTICLES) createParticles(b.x, b.y, b.type==='spirit'?'#8f8':'#f80', 1, 2);
         } else {
             b.x += b.vx * ts; b.y += b.vy * ts;
+            // ★ New Life System for normal bullets (e.g. Shrapnel)
+            if(b.life !== undefined) {
+                b.life -= ts;
+                if(b.life <= 0) { bullets.splice(i, 1); continue; }
+            }
         }
 
         if(stats.shotBounce && (b.type === 'normal')) {
@@ -703,7 +699,6 @@ function update(ts) {
                 } else {
                     damageEnemy(e, stats.dmg);
                     
-                    // ★ Sniper Knockback
                     if(stats.knockback > 0 && !b.isMini) {
                         let ang = Math.atan2(e.y - player.y, e.x - player.x);
                         e.x += Math.cos(ang) * stats.knockback * 20;
@@ -765,7 +760,6 @@ function update(ts) {
         if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
     }
 
-    // --- Boss Cycle (5 mins) ---
     let cycleTime = gameTimeSec % 300; 
     let cycleWave = Math.floor(gameTimeSec / 300);
 
@@ -1148,7 +1142,6 @@ function spawnEnemy(mode, time) {
 function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0 };
     
-    // ★ Dynamic HP Scaling: Base * (1.1 ^ Level)
     let hpMult = Math.pow(1.10, level - 1); 
     if(singularityMode) hpMult *= 2.0;
 
@@ -1211,11 +1204,18 @@ function damageEnemy(e, dmg) {
              particles.push({type:'shockwave', x:e.x, y:e.y, size:range, life:10, color:'#0ff'});
         }
 
-        // ★ Sniper Shrapnel Effect
+        // ★ Sniper Shrapnel Effect (Short Range)
         if(stats.shrapnel) {
             for(let i=0; i<3; i++) {
                 let ang = Math.random() * Math.PI * 2;
-                bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*12, vy:Math.sin(ang)*12, size:3, hit:[e.id], pierce:1, isMini:true});
+                bullets.push({
+                    type:'normal', 
+                    x:e.x, y:e.y, 
+                    vx:Math.cos(ang)*(8+Math.random()*4), // Random Speed 
+                    vy:Math.sin(ang)*(8+Math.random()*4), 
+                    size:3, hit:[e.id], pierce:1, isMini:true,
+                    life: 15 // ★ Disappear after 15 frames
+                });
             }
         }
 
@@ -1228,8 +1228,6 @@ function damageEnemy(e, dmg) {
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
 
-        // ★ Dynamic XP Drop Calculation (Fix for late game stagnation)
-        // Base Drop increases linearly with level, ensuring XP keeps up
         let levelScaler = 1 + (level * 0.5); 
         if(singularityMode) levelScaler *= 2;
         let baseVal = 25 * levelScaler;
@@ -1256,7 +1254,6 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
-        // ★ XP Curve Adjustment: Less steep geometric growth to prevent hitting a wall
         nextExp = Math.floor(nextExp * 1.15) + 500; 
         Sound.play('levelup'); updateUI(); 
         
@@ -1316,7 +1313,6 @@ function showMilestone() {
     pool.sort(() => Math.random() - 0.5);
     let opts = pool.slice(0, 3);
 
-    // ★ Singularity Option (Limit Break) for Lv 100+
     if(level >= 100) {
         let singOpt = {t:"🌌 限界突破 (SINGULARITY)", d:"全ステータス +20%UP", f:()=>{
             stats.dmg*=1.2; stats.spd+=1; stats.rate*=0.9; stats.bulletSpeed*=1.2; player.maxHp*=1.2; player.hp=player.maxHp;
@@ -1403,13 +1399,12 @@ function showEvo() {
     let evos = [
         {t:"🔫 アサルト", d:"連射特化: 🚀ミサイル解禁", f:()=>{player.class="Assault"; player.color="#00ffff"; stats.rate=6; stats.dmg+=2;}},
         {t:"🛡️ ヴァンガード", d:"近接: 💥体当たり & 🛡️シールド", f:()=>{player.class="Melee"; player.color="#ff3333"; stats.aura=true; stats.auraRange=130; stats.spd+=2; player.maxHp+=200; player.hp+=200;}},
-        // ★ Buffed Sniper: Added Shrapnel & Knockback
         {t:"🔭 スナイパー", d:"遠距離: 💥破片 & 🔙ノックバック", f:()=>{
             player.class="Sniper"; player.color="#ffff00"; 
             stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=1;
             stats.drones+=1; 
-            stats.shrapnel=true; // New
-            stats.knockback=1; // New
+            stats.shrapnel=true; 
+            stats.knockback=1; 
         }}
     ];
 
