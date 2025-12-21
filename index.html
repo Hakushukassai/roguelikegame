@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.5: FIXD</title>
+    <title>Evo Lite v5.4: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -117,7 +117,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.5 Samurai & Tempest</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.4 Samurai & Tempest</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -745,7 +745,6 @@ function update(ts) {
     }
 
     if(stats.poison > 0 && Math.random() < (1/30)*ts) {
-        // 1. 毒を出す場所を決める（一番近い敵を狙う）
         let target = null;
         let minD = 500; 
         enemies.forEach(e => {
@@ -757,12 +756,12 @@ function update(ts) {
         let spawnY = target ? target.y : player.y;
 
         gasClouds.push({ 
-            // ...
-            // r (半径) に stats.areaScale を掛ける
-            r: (30 + (stats.poison * 10)) * stats.areaScale, 
-            // life (寿命) に stats.duration を掛ける
-            life: (180 + (stats.poison * 30)) * stats.duration, 
-            // ...
+            x: spawnX, y: spawnY, 
+            // 【修正】変数がなくても動くように ( || 1.0 ) を追加しました
+            r: (30 + (stats.poison * 10)) * (stats.areaScale || 1.0), 
+            life: (180 + (stats.poison * 30)) * (stats.duration || 1.0), 
+            dmg: stats.dmg * (0.2 + stats.poison * 0.1),
+            tick: 0 
         });
     }
 
