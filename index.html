@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.2.1: Guardian FIXD</title>
+    <title>Evo Lite v4: TrickStar&Anchemist FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -493,6 +493,38 @@ function update(ts) {
 
     if(stats.nanoRepair && player.hp < player.maxHp * 0.3) {
         player.hp = Math.min(player.maxHp, player.hp + (50/60)*ts);
+    }
+
+    if(stats.slotMachine) {
+        // カウンター初期化（変数の定義場所がないので動的に追加）
+        if(typeof player.slotTimer === 'undefined') player.slotTimer = 300;
+        
+        player.slotTimer -= ts;
+        if(player.slotTimer <= 0) {
+            player.slotTimer = 300; // 5秒ごとに抽選
+            Sound.play('powerup');
+            
+            // ランダムバフ/デバフ
+            let luck = Math.random();
+            if(luck < 0.3) {
+                stats.rate = 2; // 超連射
+                if(texts.length < MAX_TEXTS) texts.push({x:player.x, y:player.y-20, str:"FEVER!!", life:60, color:'#ff0'});
+            } else if(luck < 0.6) {
+                stats.bulletSpeed = 40; // 超高速弾
+                texts.push({x:player.x, y:player.y-20, str:"SPEED UP!", life:60, color:'#0ff'});
+            } else if(luck < 0.8) {
+                player.size = 50; // 巨大化（当たり判定デカくなるデメリット）
+                texts.push({x:player.x, y:player.y-20, str:"BIG MODE", life:60, color:'#f00'});
+            } else {
+                stats.multi = 10; // ショットガン
+                texts.push({x:player.x, y:player.y-20, str:"MULTI!!", life:60, color:'#f0f'});
+            }
+            
+            // 3秒後に元に戻す（簡易実装として、常に変動し続けるスタイルなら戻さなくてもOK）
+            setTimeout(()=>{ 
+                stats.rate = 5; stats.bulletSpeed = 16; player.size = 15; stats.multi = 1; 
+            }, 3000);
+        }
     }
 
     // --- Special Skills Logic ---
@@ -1241,16 +1273,43 @@ function shoot() {
         let vy = Math.sin(currentAngle) * stats.bulletSpeed;
         
         let bType = 'normal';
+        let bColor = stats.ghostShot ? '#88ff88' : (stats.prismSplit ? '#f0f' : '#fff');
+        let bSize = stats.railgun ? 10 : 5;
+        let bDmgMult = 1.0;
+
+        // トリックスター：弾の性能をランダム化
+        if(stats.tricksterMode) {
+            let cols = ['#f00', '#0f0', '#00f', '#ff0', '#f0f', '#0ff'];
+            bColor = cols[Math.floor(Math.random()*cols.length)];
+            
+            if(stats.chaosShot) bSize = 3 + Math.random() * 10;
+            
+            let roll = Math.random();
+            if(roll < 0.2) stats.pierce = 99; // たまに貫通
+            else if(roll < 0.4) stats.homing = 1; // たまに誘導
+            else stats.homing = 0;
+            
+            // ロシアンルーレット
+            if(stats.russianRoulette) {
+                if(Math.random() < 0.16) { 
+                    bDmgMult = 10; bSize *= 2; bColor='#fff'; // 当たり
+                } else if(Math.random() < 0.1) {
+                    bDmgMult = 0.1; bSize = 2; bColor='#444'; // ハズレ
+                }
+            }
+        }
+
         bullets.push({
             type: bType,
             x: player.x,
             y: player.y,
             vx: vx,
             vy: vy,
-            size: stats.railgun ? 10 : 5,
-            color: stats.ghostShot ? '#88ff88' : (stats.prismSplit ? '#f0f' : '#fff'),
+            size: bSize,
+            color: bColor,
             hit: [],
             pierce: stats.pierce,
+            damageMult: bDmgMult, // ★ダメージ倍率を追加
             isMini: false
         });
     }
@@ -1695,6 +1754,20 @@ function damageEnemy(e, dmg) {
              player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01);
         }
 
+        if(stats.jackpot && Math.random() < 0.05) { // 5%の確率
+             Sound.play('levelup');
+             for(let k=0; k<10; k++) {
+                 let angle = Math.random() * Math.PI * 2;
+                 let dist = Math.random() * 50;
+                 expOrbs.push({
+                     x: e.x + Math.cos(angle)*dist, 
+                     y: e.y + Math.sin(angle)*dist, 
+                     size: 8, val: 100, color: '#ffd700', pitch: 1.5
+                 });
+             }
+             texts.push({x:e.x, y:e.y, str:"JACKPOT!", life:60, color:'#ffd700'});
+        }
+
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
 
         let levelScaler = 1 + (level * 0.5); 
@@ -1896,7 +1969,16 @@ function showMilestone() {
             {t:"🤢 腐食液", d:"毒ガスのダメージ間隔が半分になり、火力が倍増する。", f:()=>{stats.corrosion=true;}},
             {t:"💊 違法な興奮剤", d:"移動速度+20、連射速度+20%。ただし被ダメージが1.5倍になる。", f:()=>{stats.spd+=20; stats.rate-=5; stats.armor-=5;}},
             {t:"🌧️ アシッドレイン", d:"3秒ごとにランダムな場所に強力な酸の雨（毒沼）を降らせる。", f:()=>{stats.acidRain=true;}}
-        ];        
+        ];     
+    } else if(player.class === 'Trickster') {
+        pool = [
+            {t:"🎰 スロットマシン", d:"5秒ごとにランダムなステータスが劇的に変化する。", f:()=>{stats.slotMachine=true;}},
+            {t:"🃏 ジョーカー", d:"HPが減るほど、クリティカル率と回避率が超上昇する。", f:()=>{stats.joker=true;}},
+            {t:"🎲 ロシアンルーレット", d:"1/6の確率でダメージが10倍になるが、たまに不発になる。", f:()=>{stats.russianRoulette=true;}},
+            {t:"✨ マジックカード", d:"弾が敵を貫通し、壁で跳ね返るようになる。", f:()=>{stats.pierce+=2; stats.shotBounce=true;}},
+            {t:"💰 ジャックポット", d:"敵を倒した時、稀に大量の経験値オーブが爆発四散する。", f:()=>{stats.jackpot=true;}},
+            {t:"🌀 カオス弾", d:"弾が不規則に蛇行し、サイズもバラバラになる。", f:()=>{stats.chaosShot=true;}}
+        ];   
     }
 
     pool.sort(() => Math.random() - 0.5);
@@ -2069,6 +2151,14 @@ function showEvo() {
             stats.neurotoxin = false; // 神経毒（スロー効果）
             stats.pandemic = false;   // パンデミック（敵死亡時に毒拡散）
         }},
+        {t:"🃏 トリックスター", d:"運否天賦: 弾の性能が毎回ランダムに変化する。", f:()=>{
+            player.class="Trickster"; player.color="#ff00ff"; 
+            stats.rate = 5; // かなり連射が速い
+            stats.dmg = 10; // 威力は低め
+            stats.tricksterMode = true; // 専用フラグ
+            stats.slotMachine = false;  // マイルストーン用
+            stats.joker = false;        // マイルストーン用
+        }}
     ];
 
     evos.forEach(o => {
