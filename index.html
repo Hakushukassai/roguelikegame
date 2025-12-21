@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5: NewClass FIXD</title>
+    <title>Evo Lite v4: TrickStar&Anchemist FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -1837,7 +1837,75 @@ function showSecondEvo() {
 
     let evos = [];
 
-    if(player.class === 'Assault') {
+    // --- ⚔️ 侍 (Samurai) の進化 ---
+    if(player.class === 'Samurai') {
+        evos = [
+            {t:"👹 阿修羅 (Ashura)", d:"乱舞: 攻撃速度が極限まで上昇し、目にも止まらぬ連続斬りを繰り出す。", f:()=>{
+                player.subClass = 'Ashura';
+                stats.rate = 15; // 攻撃間隔を短縮（高速化）
+                stats.dmg *= 0.8; // 単発威力は少し下がる
+                player.color = "#ff0033"; // 深紅
+            }},
+            {t:"🌀 剣聖 (Kensei)", d:"真空波: 斬撃と同時に、遠くまで飛ぶ鋭い衝撃波を放つ。", f:()=>{
+                player.subClass = 'Kensei';
+                stats.swordWave = true; // 衝撃波フラグ
+                stats.dmg *= 1.5; // 威力アップ
+                player.color = "#ccccff"; // 青白
+            }}
+        ];
+    }
+    // --- ⚡ 雷帝 (Tempest) の進化 ---
+    else if(player.class === 'Tempest') {
+        evos = [
+            {t:"⛈️ トール (Thor)", d:"雷神: 落雷の同時攻撃数が劇的に増え、画面全体を焼き払う。", f:()=>{
+                player.subClass = 'Thor';
+                stats.lightning += 5; // 同時落雷数+5
+                stats.lightningDmgMult = 2.0; // 雷ダメージ倍増（要ロジック対応、今回は簡易的にdmg依存）
+                player.color = "#ffff00"; 
+            }},
+            {t:"⚛️ プラズマロード (Plasma)", d:"球状稲妻: 弾が「超低速で進みながら周囲を感電させる球体」に変化する。", f:()=>{
+                player.subClass = 'PlasmaLord';
+                stats.bulletSpeed = 3; // 超低速
+                stats.pierce = 999;    // 無限貫通
+                stats.dmg *= 2.0;      // 高威力
+                player.size = 20;
+                player.color = "#aa00ff";
+            }}
+        ];
+    }
+    // --- ⚗️ アルケミスト (Alchemist) の進化 ---
+    else if(player.class === 'Alchemist') {
+        evos = [
+            {t:"🧟 ネクロトキシコロジスト", d:"死者蘇生: 毒で倒した敵が高確率で味方のゾンビとして蘇る。", f:()=>{
+                player.subClass = 'NecroToxin';
+                stats.zombieVirus = true; 
+                player.color = "#00ff00";
+            }},
+            {t:"💥 マッドサイエンティスト", d:"連鎖爆発: 毒ガスが引火性になり、攻撃を当てると大爆発を起こす。", f:()=>{
+                player.subClass = 'MadScientist';
+                stats.chemicalBurn = true;
+                stats.dmg *= 1.5;
+                player.color = "#ff00ff";
+            }}
+        ];
+    }
+    // --- 🃏 トリックスター (Trickster) の進化 ---
+    else if(player.class === 'Trickster') {
+        evos = [
+            {t:"🎰 ギャンブラー", d:"ジャックポット: 敵撃破時の経験値獲得量が稀に100倍になる。", f:()=>{
+                player.subClass = 'Gambler';
+                stats.jackpotChance = 0.1; // 確率アップ
+                player.color = "#ffd700";
+            }},
+            {t:"🃏 ジョーカー", d:"ワイルドカード: 全クラスの最強スキルがランダムで発動する。", f:()=>{
+                player.subClass = 'JokerMaster';
+                stats.wildCard = true;
+                player.color = "#ffffff";
+            }}
+        ];
+    }
+    // --- 既存クラス (Assault, Melee, Sniper, Guardian) ---
+    else if(player.class === 'Assault') {
         evos = [
             {t:"💥 クラスター・ストライカー", d:"爆発特化: 着弾時に「子爆弾」が周囲に飛び散り、誘爆連鎖を引き起こす。", f:()=>{
                 player.subClass = 'ClusterStriker';
@@ -1897,19 +1965,28 @@ function showSecondEvo() {
         ];
     }
 
-    evos.forEach(o => {
-        let el = document.createElement('div'); el.className='card evo';
-        let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-        el.innerHTML = `<span class="icon">${icon}</span>${title}</h3><p>${o.d}</p>`;
-        el.onclick = () => { 
-            o.f(); 
-            let nameSpan = document.getElementById('disp-class-name');
-            nameSpan.innerText = `(${title})`;
-            nameSpan.style.color = player.color;
-            resume(); 
-        };
+    // 選択肢生成処理
+    if(evos.length > 0) {
+        evos.forEach(o => {
+            let el = document.createElement('div'); el.className='card evo';
+            let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
+            el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.d}</p>`;
+            el.onclick = () => { 
+                o.f(); 
+                let nameSpan = document.getElementById('disp-class-name');
+                nameSpan.innerText = `(${title})`;
+                nameSpan.style.color = player.color;
+                resume(); 
+            };
+            c.appendChild(el);
+        });
+    } else {
+        // 万が一クラスが見つからない場合のフォールバック（バグ回避）
+        let el = document.createElement('div'); el.className='card milestone';
+        el.innerHTML = `<h3>LIMIT BREAK</h3><p>全ステータス強化</p>`;
+        el.onclick = () => { stats.dmg*=1.5; stats.hp+=100; resume(); };
         c.appendChild(el);
-    });
+    }
 }
 
 function showMilestone() {
