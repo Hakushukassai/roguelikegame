@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.3: FIXD</title>
+    <title>Evo Lite v5.2.2: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -740,14 +740,26 @@ function update(ts) {
     }
 
     if(stats.poison > 0 && Math.random() < (1/30)*ts) {
-        gasClouds.push({ x: player.x, y: player.y, r: 30 + (stats.poison * 10), life: 180 + (stats.poison * 30), dmg: stats.dmg * (0.2 + stats.poison * 0.1) });
-    }
-    for(let i=gasClouds.length-1; i>=0; i--) {
-        let g = gasClouds[i]; g.life -= ts;
-        if(Math.random() < 0.1 * ts) { 
-            enemies.forEach(e => { if(!e.dead && Math.hypot(e.x - g.x, e.y - g.y) < g.r + e.size) damageEnemy(e, g.dmg); }); 
-        }
-        if(g.life <= 0) gasClouds.splice(i, 1);
+        // ターゲット（一番近い敵）を探す
+        let target = null;
+        let minD = 500; // 射程500以内
+        enemies.forEach(e => {
+            if(e.dead) return;
+            let d = Math.hypot(e.x - player.x, e.y - player.y);
+            if(d < minD) { minD = d; target = e; }
+        });
+
+        // 敵がいればその場所へ、いなければ自分の場所に毒を置く
+        let spawnX = target ? target.x : player.x;
+        let spawnY = target ? target.y : player.y;
+
+        // 敵の場所へ毒ガス発生
+        gasClouds.push({ 
+            x: spawnX, y: spawnY, 
+            r: 30 + (stats.poison * 10), 
+            life: 180 + (stats.poison * 30), 
+            dmg: stats.dmg * (0.2 + stats.poison * 0.1) 
+        });
     }
 
     if(stats.spinBlade > 0) {
@@ -1256,7 +1268,7 @@ function shoot() {
             type: 'slash', x: player.x, y: player.y, 
             vx: Math.cos(angle) * slashSpeed, vy: Math.sin(angle) * slashSpeed, 
             angle: angle,
-            size: 150, 
+            size: 250, 
             life: 15,  
             color: '#fff', hit: new Set(), pierce: 999, // <--- new Set() に変更
             damageMult: 1.0
@@ -1633,7 +1645,7 @@ function draw() {
             ctx.fillStyle = '#fff';
             // ★軽量化: 斬撃の影も削除
             ctx.beginPath();
-            ctx.arc(0, 0, b.size, -Math.PI/3, Math.PI/3); 
+            ctx.arc(0, 0, b.size, -Math.PI/1.8, Math.PI/1.8); 
             ctx.fill();
 
             ctx.strokeStyle = '#ccffff'; ctx.lineWidth = 4;
@@ -2331,7 +2343,7 @@ function showEvo() {
         {t:"⚔️ 侍・剣豪 (Samurai)", d:"一閃: 射程は短いが、前方の敵を一瞬で葬る「斬撃」を放つ。", f:()=>{
             player.class="Samurai"; player.color="#ffffff"; // 白銀
             stats.samuraiMode = true; // 専用フラグ
-            stats.rate = 45; // 攻撃間隔は遅い
+            stats.rate = 20; // 攻撃間隔は遅い
             stats.dmg = 300; // 一撃が重い
             stats.spd += 5;  // 足が速い
             stats.pierce = 999; // 無限貫通
