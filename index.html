@@ -887,9 +887,28 @@ function update(ts) {
                 else if(b.y > canvas.height) { b.y = 0; wrapped=true; }
 
                 if(wrapped) {
-                    b.size = Math.min(50, b.size * 1.5); // Grow
-                    b.damageMult = (b.damageMult || 1) * 1.5; // Damage up
-                    b.pierce = 999; // Reset pierce effectively
+                    b.size = Math.min(50, b.size * 1.5); 
+                    
+                    // ダメージ上限（さっきの修正）
+                    b.damageMult = Math.min(8.0, (b.damageMult || 1) * 1.5);
+                    
+                    // ▼▼▼ ここを追加（生存時間の制限） ▼▼▼
+                    
+                    // もし弾に寿命が設定されていなければ、初期値として「残り3回ループ分」くらいの時間を与える
+                    if(b.life === undefined) b.life = 180; // 180フレーム = 約3秒
+                    
+                    // ループするたびに寿命を大きく減らす（例：残り時間を半分にする）
+                    b.life -= 60; // 1秒分減らす
+                    
+                    // もし寿命が尽きたら、強制的に消すためのフラグを立てる（次のフレームで消える）
+                    if(b.life <= 0) {
+                        bullets.splice(i, 1); 
+                        continue; 
+                    }
+                    
+                    // ▲▲▲▲▲▲▲▲▲▲▲▲
+
+                    b.pierce = 999; 
                 }
             }
         }
