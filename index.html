@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.2.2: newClass FIXD</title>
+    <title>Evo Lite v5.2.2: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -283,6 +283,9 @@ let player = {
 };
 
 let stats = {
+    critMult: 2.0,   // クリティカル時のダメージ倍率（最初は2倍）
+    hpDamage: 0,     // 敵の最大HPの何%を削るか（最初は0%）
+    lowHpDmg: false,
     spd: 7, dmg: 15, rate: 25, multi: 1, 
     bulletSpeed: 16, pierce: 0, 
     aura: false, auraRange: 0,
@@ -1781,26 +1784,49 @@ function createEnemy(type, x, y) {
 function damageEnemy(e, dmg) {
     if(e.dead) return; 
     
-    // Guardian Siege Bonus
+    // ガーディアンの固定砲台ボーナス
     if(stats.siegeMode && stats.isStationary) dmg *= 2;
 
+    // --- ★変更点1：クリティカル計算の強化 ---
     let isCrit = false;
-    if(Math.random() < stats.critChance || stats.deadeye) { dmg *= (stats.deadeye ? 3 : 2); isCrit = true; } 
+    if(Math.random() < stats.critChance || stats.deadeye) { 
+        // 以前の「3倍か2倍」という固定値ではなく、育てた stats.critMult を使う
+        let multiplier = stats.deadeye ? (stats.critMult + 1.0) : stats.critMult;
+        dmg *= multiplier; 
+        isCrit = true; 
+    } 
     
+    // 既存スキル：ジャイアントスレイヤー
     if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
+    // 既存スキル：処刑人
     if(stats.executioner && (e.hp < e.maxHp * 0.2)) dmg = e.hp + 999; 
     if(stats.execute && (e.hp < e.maxHp * 0.3)) dmg = e.hp + 9999; 
 
+    // --- ★変更点2：敵HPに応じた割合ダメージ追加（ジャイアントキラー） ---
+    if(stats.hpDamage > 0) {
+        // ボス相手だと強すぎる場合があるので、最大でも「基本ダメージの50倍」までに制限する安全策付き
+        let percentDmg = e.maxHp * stats.hpDamage;
+        let cap = stats.dmg * 50; 
+        dmg += Math.min(percentDmg, cap);
+    }
+
+    // --- ★変更点3：背水ダメージ（鮮血の爪） ---
+    if(stats.lowHpDmg) {
+        // HPが減っている割合（0.0 ～ 1.0）
+        let lostHpRatio = 1.0 - (player.hp / player.maxHp);
+        // ダメージ倍率計算（最大3倍）
+        dmg *= (1.0 + lostHpRatio * 2.0);
+        
+        // 演出：威力が上がっているときはダメージ数字を赤くするなどの処理を入れると分かりやすい
+        if(lostHpRatio > 0.5) isCrit = true; // 演出用
+    }
+
+    // --- ここから下は変更なし ---
     e.hp -= dmg; e.flash = 5; 
     
-    // ★軽量化: パーティクル生成を確率で間引く（ヒット時は低確率でのみ発生）
     if(particles.length < MAX_PARTICLES && Math.random() < 0.2) createParticles(e.x, e.y, '#fff', 1, 2); 
-    
-    // ヒット音は鳴らす（同時発音制限はSound側にあるためOK）
     Sound.play('hit');
 
-    // ★軽量化: ダメージ数字の表示を間引く（クリティカル、ボス、または確率20%でのみ表示）
-    // 大量に敵がいるときに画面が数字で埋め尽くされるのを防ぎます
     if(isCrit || e.type === 'boss' || texts.length < 5 || Math.random() < 0.2) {
         if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
     }
@@ -1808,14 +1834,13 @@ function damageEnemy(e, dmg) {
     if(e.hp <= 0) {
         e.dead = true; 
         Sound.play('explode'); 
-        screenShake = e.type === 'boss' ? 20 : 2; // シェイクも控えめに
+        screenShake = e.type === 'boss' ? 20 : 2; 
 
-        // chainBurst
         if(stats.chainBurst) {
              Sound.play('explode', 2.0);
              let range = 100;
              let burstDmg = stats.dmg * 2;
-             if(Math.random() < 0.3) createParticles(e.x, e.y, '#0ff', 5, 3); // 軽量化
+             if(Math.random() < 0.3) createParticles(e.x, e.y, '#0ff', 5, 3);
              enemies.forEach(subE => {
                  if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < range) {
                      damageEnemy(subE, burstDmg);
@@ -1839,7 +1864,7 @@ function damageEnemy(e, dmg) {
 
         if(stats.jackpot && Math.random() < 0.05) { 
              Sound.play('levelup');
-             for(let k=0; k<5; k++) { // 10個から5個に減量
+             for(let k=0; k<5; k++) {
                  let angle = Math.random() * Math.PI * 2;
                  let dist = Math.random() * 30;
                  expOrbs.push({x: e.x + Math.cos(angle)*dist, y: e.y + Math.sin(angle)*dist, size: 8, val: 100, color: '#ffd700', pitch: 1.5});
@@ -1849,8 +1874,6 @@ function damageEnemy(e, dmg) {
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
         
-        // ★軽量化: 死亡時のパーティクルを大幅削減
-        // ボス以外はパーティクルを3個程度に抑える（以前は15個など）
         if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?30:3, 4);
 
         let levelScaler = 1 + (level * 0.5); 
@@ -2079,7 +2102,25 @@ function showMilestone() {
         {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間が3倍になる。", f:()=>{player.invincibleMax=60;}, check:()=>player.invincibleMax>=60},
         // ▼ 新規追加
         {t:"👥 ドッペルゲンガー", d:"背後に分身が出現し、反対方向へ同時に攻撃する。", f:()=>{stats.doppelganger=true;}, check:()=>stats.doppelganger},
-        {t:"⏳ ザ・ワールド", d:"ダメージを受けると時が止まり、回避のチャンスを得る(CDあり)。", f:()=>{stats.timeStop=true;}, check:()=>stats.timeStop}
+        {t:"⏳ ザ・ワールド", d:"ダメージを受けると時が止まり、回避のチャンスを得る(CDあり)。", f:()=>{stats.timeStop=true;}, check:()=>stats.timeStop},
+        {
+        t:"🧬 ジャイアントキラー", 
+        d:"攻撃時、敵の最大HPの2%分の追加ダメージを与える。", 
+        f:()=>{ stats.hpDamage += 0.02; }, 
+        check:()=>false // 何度でも取得可能にするなら false、1回限りなら stats.hpDamage > 0
+    },
+    {
+        t:"🎯 フェイタル・クリティカル", 
+        d:"クリティカルダメージ倍率 +50% (現在: " + (stats.critMult*100).toFixed(0) + "%)", 
+        f:()=>{ stats.critMult += 0.5; }, 
+        check:()=>stats.critMult >= 10.0 // 上限を設ける場合
+    },
+    {
+        t:"🩸 鮮血の爪", 
+        d:"失ったHP割合に応じて攻撃力が上昇する (背水)", 
+        f:()=>{ stats.lowHpDmg = true; }, 
+        check:()=>stats.lowHpDmg
+    }
     ];
 
     // --- クラス別 (Class Specific) ---
