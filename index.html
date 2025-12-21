@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.6: FIXD</title>
+    <title>Evo Lite v5.7: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -708,7 +708,16 @@ function update(ts) {
     }
 
     if(stats.missile > 0) {
-        if(Math.random() < (1 / (60 - stats.missile * 5)) * ts) fireMissile();
+        // タイマー変数がなければ初期化
+        if(typeof player.missileCd === 'undefined') player.missileCd = 0;
+        
+        player.missileCd -= ts;
+        if(player.missileCd <= 0) {
+            fireMissile();
+            // レベルが高いほど間隔が短くなる計算式
+            let missileInterval = Math.max(10, 60 - stats.missile * 5);
+            player.missileCd = missileInterval;
+        }
     }
 
     if(drones.length < stats.drones) {
@@ -874,9 +883,24 @@ function update(ts) {
     if(stats.siegeMode && stats.isStationary) currentRate /= 2;
     if(stats.bulletStorm) currentRate = 3; 
 
-    if(!stats.aura && Math.random() < (1/currentRate)*ts) {
-        shoot();
-        if(stats.chakram > 0 && Math.random() < 0.3) fireChakram();
+    // ★ここから修正後のコード★
+    if(!stats.aura) {
+        // タイマー変数がなければ0で初期化
+        if(typeof player.shootCd === 'undefined') player.shootCd = 0;
+
+        // 時間を経過させる
+        player.shootCd -= ts;
+        
+        // タイマーが0以下になったら発射！
+        if(player.shootCd <= 0) {
+            shoot();
+            
+            // ついでにチャクラムも投げる
+            if(stats.chakram > 0 && Math.random() < 0.3) fireChakram();
+
+            // 次の発射までの時間をセット（これで等間隔になります）
+            player.shootCd = currentRate;
+        }
     }
 
     // --- Bullets ---
