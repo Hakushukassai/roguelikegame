@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.4: FIXD</title>
+    <title>Evo Lite v5.5: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -117,7 +117,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.4 Samurai & Tempest</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.5 Samurai & Tempest</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -283,6 +283,11 @@ let player = {
 };
 
 let stats = {
+    critChance: 0.05, // 会心率（初期値5%）
+    dodge: 0,         // 回避率
+    areaScale: 1.0,   // 攻撃サイズ倍率
+    duration: 1.0,    // 持続時間倍率（毒や設置物用）
+    knockback: 0,     // ノックバック力
     critMult: 2.0,   // クリティカル時のダメージ倍率（最初は2倍）
     hpDamage: 0,     // 敵の最大HPの何%を削るか（最初は0%）
     lowHpDmg: false,
@@ -292,7 +297,7 @@ let stats = {
     regen: 1, magnet: 150, 
     homing: 0, lightning: 0, poison: 0, spinBlade: 0, chakram: 0,
     missile: 0, drones: 0, auraScale: 1,
-    lifesteal: 0, critChance: 0, infinitePierce: false,
+    lifesteal: 0, infinitePierce: false,
     missileBlast: 1, gravityAura: false, spreadShot: false,
     napalm: false, spikeArmor: false, dashNova: false, 
     splitShot: false, giantSlayer: false,
@@ -752,11 +757,12 @@ function update(ts) {
         let spawnY = target ? target.y : player.y;
 
         gasClouds.push({ 
-            x: spawnX, y: spawnY, 
-            r: 30 + (stats.poison * 10), 
-            life: 180 + (stats.poison * 30), 
-            dmg: stats.dmg * (0.2 + stats.poison * 0.1),
-            tick: 0 // ダメージ間隔管理用
+            // ...
+            // r (半径) に stats.areaScale を掛ける
+            r: (30 + (stats.poison * 10)) * stats.areaScale, 
+            // life (寿命) に stats.duration を掛ける
+            life: (180 + (stats.poison * 30)) * stats.duration, 
+            // ...
         });
     }
 
@@ -1282,15 +1288,17 @@ function shoot() {
 
         // 弾速ステータスを反映
         let slashSpeed = stats.bulletSpeed * 0.9; 
+        
+        // ★修正1: ここにあった "let bSize = ..." の行を削除しました（エラーの原因になるため）
 
         Sound.play('missile', 2.0); 
         bullets.push({
             type: 'slash', x: player.x, y: player.y, 
             vx: Math.cos(angle) * slashSpeed, vy: Math.sin(angle) * slashSpeed, 
             angle: angle,
-            size: 250, 
+            size: 220 * stats.areaScale, // ここで正しくサイズ倍率を適用しています
             life: 15,  
-            color: '#fff', hit: new Set(), pierce: 999, // <--- new Set() に変更
+            color: '#fff', hit: new Set(), pierce: 999, 
             damageMult: 1.0
         });
         
@@ -1298,13 +1306,11 @@ function shoot() {
         if(stats.swordWave || stats.multi > 1) {
              let waveCount = stats.multi;
              
-             // ★軽量化: 衝撃波の数に上限(6個)を設け、それ以上は「威力」と「サイズ」に還元する
              let waveDmgMult = 1.0;
-             let waveSize = 5;
+             let waveSize = 5 * stats.areaScale; // ★衝撃波にもサイズ適用
              
              if(waveCount > 6) {
                  let extra = waveCount - 6;
-                 // 余剰分を威力とサイズに変換（無限に弾が増えるのを防ぐ）
                  waveDmgMult += extra * 0.3; 
                  waveSize += Math.min(15, extra * 0.5); 
                  waveCount = 6; 
@@ -1321,7 +1327,7 @@ function shoot() {
                     color:'#adf', 
                     pierce:5, 
                     life:40,
-                    hit: [],  // ★これ（初期化）を追加！
+                    hit: [],  
                     damageMult: waveDmgMult
                 });
              }
@@ -1351,15 +1357,13 @@ function shoot() {
     if(stats.siegeMode && stats.isStationary) currentDmg *= 2;
     if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
 
-    // ★軽量化: 通常弾も多すぎる場合は間引いて強化する
-    // これによりアサルトなどでMultiを取りすぎた時の重さも解消されます
     let bDmgMultBase = 1.0;
     let bSizeBase = stats.railgun ? 10 : 5;
     
     if(count > 20) {
         let extra = count - 20;
-        bDmgMultBase += extra * 0.1; // 威力アップ
-        count = 20; // 最大20発同時発射に制限
+        bDmgMultBase += extra * 0.1; 
+        count = 20; 
     }
 
     let spread = 0.1;
@@ -1377,16 +1381,19 @@ function shoot() {
         let bType = 'normal';
         let bColor = stats.ghostShot ? '#88ff88' : (stats.prismSplit ? '#f0f' : '#fff');
         let bDmgMult = bDmgMultBase;
-        let bSize = bSizeBase;
+        
+        // ★修正2: ここで stats.areaScale を掛けて、通常弾も巨大化するように修正
+        let bSize = bSizeBase * stats.areaScale; 
 
         if(stats.tempestMode) {
-             bColor = '#d0f'; bSize = 6;
+             bColor = '#d0f'; 
+             bSize = 6 * stats.areaScale; // 雷帝の弾にも適用
         }
 
         if(stats.tricksterMode) {
             let cols = ['#f00', '#0f0', '#00f', '#ff0', '#f0f', '#0ff'];
             bColor = cols[Math.floor(Math.random()*cols.length)];
-            if(stats.chaosShot) bSize = 3 + Math.random() * 10;
+            if(stats.chaosShot) bSize = (3 + Math.random() * 10) * stats.areaScale;
             let roll = Math.random();
             if(roll < 0.2) stats.pierce = 99; 
             else if(roll < 0.4) stats.homing = 1; 
@@ -1410,7 +1417,8 @@ function shoot() {
         bullets.push({
             type: 'normal', x: player.clone.x, y: player.clone.y,
             vx: -Math.cos(startAngle)*stats.bulletSpeed, vy: -Math.sin(startAngle)*stats.bulletSpeed,
-            size: 5, color: '#fff', hit: [], pierce: stats.pierce, damageMult: 1, isMini: false
+            size: 5 * stats.areaScale, // 分身の弾にも適用
+            color: '#fff', hit: [], pierce: stats.pierce, damageMult: 1, isMini: false
         });
     }
 
@@ -1515,6 +1523,12 @@ function createLightningEffect(x1, y1, x2, y2) {
 }
 
 function takeDamage(dmg) {
+    if(Math.random() < stats.dodge) {
+        // 回避成功！
+        if(texts.length < MAX_TEXTS) texts.push({x:player.x, y:player.y-20, str:"MISS", life:30, color:'#88ff88'});
+        return; 
+    }
+    
     if(stats.forceField && stats.forceFieldCd <= 0) {
         stats.forceFieldCd = 300; 
         Sound.play('bounce');
@@ -2260,87 +2274,113 @@ function showMilestone() {
 
 function showUpgrade() {
     gameActive = false;
-    let m = document.getElementById('menu-overlay'); let c = document.getElementById('card-area');
-    c.innerHTML = ''; m.style.display = 'flex';
-    document.querySelector('#menu-title').innerText = "レベルアップ！";
+    let m = document.getElementById('menu-overlay'); 
+    let c = document.getElementById('card-area');
+    c.innerHTML = ''; 
+    m.style.display = 'flex';
+    document.querySelector('#menu-title').innerText = "LEVEL UP!";
 
-    // ★ Upgrade Logic Refactored to support Rare & Percent stats
+    // アップグレード生成用ヘルパー
     const createOpt = (id, icon, title, val, unit, applyFunc, descGen) => {
         return { id: id, icon: icon, title: title, val: val, unit: unit, func: applyFunc, desc: descGen };
     };
 
     let pool = [];
 
-    // Basic Stats (Fixed)
-    pool.push(createOpt('dmg_p', '💪', '攻撃倍率', 15, '%', (v)=> {
-        // 増加量を計算
-        let increase = Math.floor(stats.dmg * (v / 100));
-        // 最低でも「7」は上がるようにする（固定値強化の半分くらいが目安）
-        let minVal = 7; 
-        
-        stats.dmg += Math.max(increase, minVal);
-    }, (v)=>`ダメージ +${v}%`));
-    pool.push(createOpt('hp', '❤️', 'HP強化', 50, '', (v)=>{player.maxHp+=v; player.hp+=v;}, (v)=>`最大HP +${v}`));
-    pool.push(createOpt('spd', '👟', '移動速度', 2, '', (v)=>stats.spd+=v, (v)=>`移動速度 +${v}`));
-    pool.push(createOpt('rate', '⚡', '連射速度', 3, '', (v)=>stats.rate=Math.max(2, stats.rate-v), (v)=>`連射/CD短縮`)); // Fixed behavior
+    // =========================================
+    // 1. 全クラス共通 (Universal Stats)
+    // =========================================
+    pool.push(createOpt('dmg_p', '💪', '攻撃力UP', 15, '%', (v)=>stats.dmg=Math.floor(stats.dmg*(1+v/100)), (v)=>`ダメージ +${v}%`));
+    pool.push(createOpt('hp', '❤️', '最大HP', 50, '', (v)=>{player.maxHp+=v; player.hp+=v;}, (v)=>`HP +${v}`));
+    pool.push(createOpt('spd', '👟', '移動速度', 2, '', (v)=>stats.spd+=v, (v)=>`速度 +${v}`));
+    pool.push(createOpt('crit', '🎯', 'クリティカル', 5, '%', (v)=>stats.critChance+=v/100, (v)=>`会心率 +${v}%`));
+    pool.push(createOpt('dodge', '💨', '回避率', 5, '%', (v)=>stats.dodge=Math.min(0.6, stats.dodge+v/100), (v)=>`回避 +${v}% (Max60)`));
+    pool.push(createOpt('magnet', '🧲', '収集範囲', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
     
-    // Percentage Stats (Scaling)
-    pool.push(createOpt('dmg_p', '💪', '攻撃倍率', 15, '%', (v)=>stats.dmg=Math.floor(stats.dmg*(1+v/100)), (v)=>`ダメージ +${v}%`));
-    pool.push(createOpt('rate_p', '⏩', 'ヘイスト', 10, '%', (v)=>stats.rate=Math.max(2, stats.rate*(1-v/100)), (v)=>`攻撃速度 +${v}%`));
-
-    // Special Stats
-    pool.push(createOpt('multi', player.class==='Melee'?'⚔️':'🔫', player.class==='Melee'?'ブレード+':'マルチ/盾', 1, '', (v)=>stats.multi+=v, (v)=>player.class==='Melee'?`回転刃 +${v}`:`発射数 +${v}`));
-    pool.push(createOpt('pierce', '🏹', '貫通弾', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
-    pool.push(createOpt('regen', '💖', 'リジェネ', 2, '', (v)=>stats.regen+=v, (v)=>`回復 +${v}/s`));
-    if(Math.random() < 0.3) {
-        pool.push(createOpt('super_regen', '🏥', '超回復', 10, '', (v)=>stats.regen+=v, (v)=>`回復 +${v}/s`));
+    // レア枠：超回復
+    if(Math.random() < 0.2) {
+        pool.push(createOpt('super_regen', '🏥', '超回復', 10, '', (v)=>stats.regen+=v, (v)=>`HP回復 +${v}/s`));
+    } else {
+        pool.push(createOpt('regen', '💖', 'リジェネ', 2, '', (v)=>stats.regen+=v, (v)=>`HP回復 +${v}/s`));
     }
-    pool.push(createOpt('magnet', '🧲', 'マグネット', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
 
-    // Class Specifics (Fixed - No Rare Multiplier usually, but we can boost them)
-    if(player.class === 'Melee' || player.class === 'Guardian') {
-        pool = pool.filter(o => o.id !== 'pierce');
-        pool.push(createOpt('armor', '🛡️', 'アーマー', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメ -${v}`));
+    // =========================================
+    // 2. クラス別出し分け (Class Specific)
+    // =========================================
+    
+    // ★「近接系」＆「侍」＆「アルケミスト」は『弾速』が不要（あるいは効果薄）
+    // ※侍は弾速で斬撃速度が変わるが、重要度は低いので除外、または「斬撃速度」として出すか判断
+    if(player.class !== 'Melee' && player.class !== 'Samurai' && player.class !== 'Alchemist') {
+        pool.push(createOpt('bullet_speed', '🚅', '弾速', 10, '%', (v)=>stats.bulletSpeed*=(1+v/100), (v)=>`弾の速さ +${v}%`));
+    }
+
+    // ★「貫通」が必要なクラス (スナイパー、アサルト、トリックスター)
+    // 侍(無限貫通)、Melee(範囲攻撃)、アルケミ(毒)、ガーディアン(設置)には不要
+    if(['Sniper', 'Assault', 'Trickster', 'Tempest'].includes(player.class)) {
+        pool.push(createOpt('pierce', '🏹', '貫通力', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
+    }
+
+    // ★「攻撃範囲(Area)」 (全クラス有効だが、特にMelee/侍/アルケミ/ガーディアンに重要)
+    pool.push(createOpt('area', '💥', '攻撃範囲', 10, '%', (v)=>{
+        stats.areaScale += v/100;
+        // 既存の回転刃や毒などにも適用されるように変数を共用する設計にする
+        if(player.class === 'Melee') player.size *= 1.05; // Meleeは本体サイズも少し大きく
+    }, (v)=>`サイズ +${v}%`));
+
+    // ★「連射速度(Rate)」 (全クラス有効)
+    pool.push(createOpt('rate', '⚡', 'クールダウン', 5, '%', (v)=>stats.rate=Math.max(2, stats.rate*(1-v/100)), (v)=>`攻撃間隔 -${v}%`));
+
+    // ★「持続時間(Duration)」 (アルケミスト、ガーディアン、設置系スキル持ち用)
+    if(player.class === 'Alchemist' || player.class === 'Guardian' || stats.clusterMine || stats.poison > 0) {
+        pool.push(createOpt('duration', '⏳', '効果時間', 15, '%', (v)=>stats.duration+=v/100, (v)=>`持続時間 +${v}%`));
+    }
+
+    // ★「防御力(Armor)」 (近接系やタンク系に優先)
+    if(['Melee', 'Samurai', 'Guardian'].includes(player.class)) {
+        pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
     }
     
-    // Skill Unlocks (Fixed Logic)
-    let unlocks = [
-        {id:'spin', t:"⚔️ 回転刃", k:'spinBlade'}, {id:'homing', t:"🎯 ホーミング", k:'homing'},
-        {id:'lightning', t:"🌩️ ライトニング", k:'lightning'}, {id:'poison', t:"☠️ 毒ガス", k:'poison'},
-        {id:'chakram', t:"🥏 チャクラム", k:'chakram'}
-    ];
-    unlocks.forEach(u => {
-        pool.push(createOpt(u.id, u.t.split(' ')[0], u.t.split(' ')[1], 1, '', (v)=>stats[u.k]+=v, (v)=>stats[u.k]===0?`${u.t.split(' ')[1]}を取得`:`${u.t.split(' ')[1]} Lv${stats[u.k]+1}`));
-    });
+    // ★「ノックバック」 (近接やスナイパーで重要)
+    if(['Melee', 'Sniper', 'Assault'].includes(player.class)) {
+        pool.push(createOpt('knockback', '🥊', '衝撃力', 1, '', (v)=>stats.knockback+=v, (v)=>`ノックバック +${v}`));
+    }
 
-    if(player.class === 'Assault') pool.push(createOpt('missile', '🚀', 'ミサイル', 1, '', (v)=>stats.missile+=v, (v)=>`ミサイル Lv${stats.missile+1}`));
-    if(player.class === 'Sniper') pool.push(createOpt('drones', '🛰️', 'ドローン', 1, '', (v)=>stats.drones+=v, (v)=>`ドローン +${v}`));
-    if(player.class === 'Melee') pool.push(createOpt('auraScale', '🛡️', 'オーラ拡大', 0.2, '', (v)=>stats.auraScale+=v, (v)=>`範囲 +${(v*100).toFixed(0)}%`));
+    // ★「マルチショット」 (射撃クラス用) vs 「回転刃追加」 (Melee用)
+    if(player.class === 'Melee') {
+        pool.push(createOpt('multi', '⚔️', '回転刃+', 1, '', (v)=>stats.multi+=v, (v)=>`回転刃の数 +${v}`));
+    } else if(player.class === 'Samurai') {
+        // 侍はマルチショットで「衝撃波」が増える仕様にしたのでOK
+        pool.push(createOpt('multi', '🌊', '衝撃波+', 1, '', (v)=>stats.multi+=v, (v)=>`衝撃波の数 +${v}`));
+    } else {
+        // 通常の射撃クラス
+        pool.push(createOpt('multi', '🔫', 'マルチショット', 1, '', (v)=>stats.multi+=v, (v)=>`同時発射数 +${v}`));
+    }
 
-    // Selection Logic
+    // =========================================
+    // 3. 抽選ロジック
+    // =========================================
     let choices = [];
     let safety = 0;
     while(choices.length < 3 && safety < 100) {
         let base = pool[Math.floor(Math.random() * pool.length)];
+        // 重複チェック
         if(choices.some(c => c.id === base.id)) { safety++; continue; }
         
-        // Clone for modifications
+        // オブジェクトをコピー
         let opt = { ...base }; 
-        
-        // ★ RARE ROLL Logic (10%)
+
+        // ★たまに「レア(強効果)」になる
         if(Math.random() < 0.1) {
             opt.isRare = true;
-            let mult = 2; // Double effect
-            if(opt.id === 'hp') mult = 3; // Triple for HP
-            if(opt.id === 'multi') mult = 2; 
-
+            let mult = 2; 
+            if(opt.id === 'hp') mult = 3; 
             opt.val = Math.floor(opt.val * mult);
-            if(opt.id === 'auraScale') opt.val = parseFloat((base.val * 1.5).toFixed(1)); // Special fix float
         }
 
         choices.push(opt);
     }
 
+    // カード生成
     choices.forEach(o => {
         let el = document.createElement('div'); 
         el.className = 'card';
