@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v4.1: TrickStar&Anchemist FIXD</title>
+    <title>Evo Lite v4: TrickStar&Anchemist FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -460,7 +460,6 @@ function update(ts) {
                 });
                 if(target) {
                     let ang = Math.atan2(target.y - s.y, target.x - s.x);
-                    // Sentry Rate Mod (Guardian Buff)
                     let fireDelay = Math.max(5, stats.rate * (1/stats.sentryRate));
                     bullets.push({type:'normal', x:s.x, y:s.y, vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, size:6, color:'#0f0', hit:[], pierce:stats.pierce});
                     Sound.play('shoot', 1.5);
@@ -469,17 +468,15 @@ function update(ts) {
             }
         });
         
-        // Tesla Grid Logic
         if(stats.teslaGrid && sentries.length >= 2) {
             for(let i=0; i<sentries.length; i++) {
                 let s1 = sentries[i];
-                let s2 = sentries[(i+1)%sentries.length]; // Connect loop
+                let s2 = sentries[(i+1)%sentries.length];
                 enemies.forEach(e => {
                     if(e.dead) return;
-                    // Line collision check
                     let dist = pointToLineDistance(e.x, e.y, s1.x, s1.y, s2.x, s2.y);
                     if(dist < e.size + 5) {
-                        damageEnemy(e, stats.dmg * 2.0); // High damage fence
+                        damageEnemy(e, stats.dmg * 2.0);
                         if(Math.random()<0.2*ts) createParticles(e.x, e.y, '#0ff', 2, 2);
                     }
                 });
@@ -496,31 +493,25 @@ function update(ts) {
     }
 
     if(stats.slotMachine) {
-        // カウンター初期化（変数の定義場所がないので動的に追加）
         if(typeof player.slotTimer === 'undefined') player.slotTimer = 300;
-        
         player.slotTimer -= ts;
         if(player.slotTimer <= 0) {
-            player.slotTimer = 300; // 5秒ごとに抽選
+            player.slotTimer = 300; 
             Sound.play('powerup');
-            
-            // ランダムバフ/デバフ
             let luck = Math.random();
             if(luck < 0.3) {
-                stats.rate = 2; // 超連射
+                stats.rate = 2; 
                 if(texts.length < MAX_TEXTS) texts.push({x:player.x, y:player.y-20, str:"FEVER!!", life:60, color:'#ff0'});
             } else if(luck < 0.6) {
-                stats.bulletSpeed = 40; // 超高速弾
+                stats.bulletSpeed = 40; 
                 texts.push({x:player.x, y:player.y-20, str:"SPEED UP!", life:60, color:'#0ff'});
             } else if(luck < 0.8) {
-                player.size = 50; // 巨大化（当たり判定デカくなるデメリット）
+                player.size = 50; 
                 texts.push({x:player.x, y:player.y-20, str:"BIG MODE", life:60, color:'#f00'});
             } else {
-                stats.multi = 10; // ショットガン
+                stats.multi = 10; 
                 texts.push({x:player.x, y:player.y-20, str:"MULTI!!", life:60, color:'#f0f'});
             }
-            
-            // 3秒後に元に戻す（簡易実装として、常に変動し続けるスタイルなら戻さなくてもOK）
             setTimeout(()=>{ 
                 stats.rate = 5; stats.bulletSpeed = 16; player.size = 15; stats.multi = 1; 
             }, 3000);
@@ -532,6 +523,18 @@ function update(ts) {
         player.laserCd -= ts;
         if(player.laserCd <= 0) { fireOmegaLaser(); player.laserCd = 180; }
     }
+    
+    // --- 雷帝 (Tempest) のパッシブ落雷 ---
+    if(stats.tempestMode) {
+        if(Math.random() < 0.1 * ts) { // 高頻度で落雷
+            let targets = enemies.filter(e => !e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 500);
+            if(targets.length > 0) {
+                let target = targets[Math.floor(Math.random() * targets.length)];
+                triggerLightning(target, stats.lightning);
+            }
+        }
+    }
+
     if(stats.absoluteZero) {
         enemies.forEach(e => {
             if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 250) {
@@ -543,7 +546,7 @@ function update(ts) {
     if(stats.earthquake) {
         earthquakeTimer -= ts;
         if(earthquakeTimer <= 0) {
-            earthquakeTimer = 120; // 2 seconds
+            earthquakeTimer = 120; 
             screenShake = 15; Sound.play('bash');
             enemies.forEach(e => { if(!e.dead) damageEnemy(e, stats.dmg * 2); });
             particles.push({type:'shockwave', x:player.x, y:player.y, size:400, life:30, color:'#f80'});
@@ -552,16 +555,16 @@ function update(ts) {
     if(stats.electroFence) {
         electroFenceTimer -= ts;
         if(electroFenceTimer <= 0) {
-            electroFenceTimer = 60; // 1 second
+            electroFenceTimer = 60; 
             let r = 150;
             Sound.play('spark');
             particles.push({type:'shockwave', x:player.x, y:player.y, size:r, life:20, color:'#88ffff'});
             enemies.forEach(e => {
                 if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < r + e.size) {
                     damageEnemy(e, stats.dmg);
-                    e.frozen = 30; // 0.5s stun
+                    e.frozen = 30; 
                     let ang = Math.atan2(e.y-player.y, e.x-player.x);
-                    e.x += Math.cos(ang) * 30; e.y += Math.sin(ang) * 30; // Knockback
+                    e.x += Math.cos(ang) * 30; e.y += Math.sin(ang) * 30; 
                     createLightningEffect(player.x, player.y, e.x, e.y);
                 }
             });
@@ -606,15 +609,14 @@ function update(ts) {
     player.x = Math.max(15, Math.min(canvas.width-15, player.x));
     player.y = Math.max(15, Math.min(canvas.height-15, player.y));
 
-    // Earth Shaker Effect
     if(stats.isEarthShaker && player.isMoving) {
-        if(Math.floor(Date.now() / 200) % 2 === 0) { // Every 200ms
+        if(Math.floor(Date.now() / 200) % 2 === 0) { 
             screenShake = 2;
             enemies.forEach(e => {
                 if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < player.size + 40) {
-                    damageEnemy(e, stats.dmg * 0.5); // Stomp damage
+                    damageEnemy(e, stats.dmg * 0.5); 
                     let pushAng = Math.atan2(e.y - player.y, e.x - player.x);
-                    e.x += Math.cos(pushAng) * 10 * ts; e.y += Math.sin(pushAng) * 10 * ts; // Hard Push
+                    e.x += Math.cos(pushAng) * 10 * ts; e.y += Math.sin(pushAng) * 10 * ts; 
                 }
             });
         }
@@ -623,19 +625,13 @@ function update(ts) {
     // --- Skills ---
     if(player.class === 'Melee' && (stats.multi > 0 || stats.bladeStorm)) {
         let count = stats.multi + (stats.bladeStorm ? 4 : 0);
-        // Blade Master SubClass logic removed or adapted? 
-        // Flying Swords Logic
         if(player.subClass === 'FlyingSwords') {
              if(flyingSwords.length !== count) {
-                 // Reset
                  flyingSwords = [];
                  for(let i=0; i<count; i++) flyingSwords.push({x:player.x, y:player.y, target:null, cooldown:0});
              }
-             
              flyingSwords.forEach(sw => {
                  if(sw.cooldown > 0) sw.cooldown -= ts;
-                 
-                 // Find Target if none
                  if(!sw.target || sw.target.dead || Math.hypot(sw.target.x-player.x, sw.target.y-player.y) > 400) {
                      sw.target = null;
                      let minD = 350;
@@ -645,33 +641,25 @@ function update(ts) {
                          if(d < minD) { minD=d; sw.target=e; }
                      });
                  }
-                 
                  let tx, ty;
                  if(sw.target) {
                      tx = sw.target.x; ty = sw.target.y;
                  } else {
-                     // Orbit player if no target
                      let angle = Date.now() * 0.002 + (flyingSwords.indexOf(sw) * (Math.PI*2/count));
                      tx = player.x + Math.cos(angle) * 80;
                      ty = player.y + Math.sin(angle) * 80;
                  }
-                 
-                 // Move sword
                  sw.x += (tx - sw.x) * 0.15 * ts;
                  sw.y += (ty - sw.y) * 0.15 * ts;
-                 
-                 // Hit logic
                  enemies.forEach(e => {
                      if(!e.dead && Math.hypot(e.x-sw.x, e.y-sw.y) < 15 && sw.cooldown <= 0) {
                          damageEnemy(e, stats.dmg * 0.8);
                          createParticles(e.x, e.y, '#f0a', 1, 1);
-                         sw.cooldown = 15; // Hit interval
+                         sw.cooldown = 15; 
                      }
                  });
              });
-
         } else {
-            // Standard Orbit Logic
             if(spikeBits.length !== count) {
                 spikeBits = []; for(let i=0; i<count; i++) spikeBits.push({angle:0});
             }
@@ -681,7 +669,6 @@ function update(ts) {
                 let currentAngle = bit.angle + (Math.PI*2/count)*i;
                 let radius = 25 + player.size/2 + (stats.titan ? 20 : 0);
                 if(stats.isColossus) radius += 20;
-                
                 bit.x = player.x + Math.cos(currentAngle) * radius;
                 bit.y = player.y + Math.sin(currentAngle) * radius;
                 enemies.forEach(e => {
@@ -694,7 +681,6 @@ function update(ts) {
     }
 
     if(stats.missile > 0) {
-        // ★ 強化: 発射頻度向上
         if(Math.random() < (1 / (60 - stats.missile * 5)) * ts) fireMissile();
     }
 
@@ -739,11 +725,8 @@ function update(ts) {
 
     if(stats.doppelganger) {
         if(!player.clone) player.clone = {x:player.x, y:player.y};
-        // プレイヤーの背後（少し遅れてついてくる位置）へ移動
         let lerp = 0.1;
-        // player.x から少し離れた位置（移動方向の逆など）を目標にする簡易計算
         let targetX = player.x - (player.isMoving ? Math.sign(player.x - player.clone.x)*40 : 40);
-        
         player.clone.x += (targetX - player.clone.x) * lerp;
         player.clone.y += (player.y - player.clone.y) * lerp;
     }
@@ -775,26 +758,20 @@ function update(ts) {
         let r = stats.auraRange * stats.auraScale;
         let auraRate = 0.1;
         if(player.class === 'Melee' && stats.homing > 0) auraRate += (stats.homing * 0.05);
-        
-        // Sun Crusher Logic
         if(player.subClass === 'SunCrusher') {
             if(player.isMoving) {
-                // Release charge
                 if(player.sunCharge > 0) {
-                    player.sunCharge -= ts * 5; // Drain fast
-                    r += player.sunCharge * 2; // Expand range based on charge
-                    auraRate = 0.5; // High tick rate
-                    // Add Damage Mod based on charge
+                    player.sunCharge -= ts * 5; 
+                    r += player.sunCharge * 2; 
+                    auraRate = 0.5; 
                     if(Math.random() < 0.3) createParticles(player.x+(Math.random()-0.5)*r, player.y+(Math.random()-0.5)*r, '#fa0', 1, 3);
                 }
             } else {
-                // Charging
                 player.sunCharge = Math.min(100, player.sunCharge + ts);
-                r = 10; // Shrink when charging
+                r = 10; 
                 if(Math.random()<0.1) createParticles(player.x, player.y, '#fa0', 1, 1);
             }
         }
-
         enemies.forEach(e => { 
             if(e.dead) return;
             let dist = Math.hypot(e.x-player.x, e.y-player.y);
@@ -803,7 +780,6 @@ function update(ts) {
                     let d = stats.dmg;
                     if(player.subClass === 'SunCrusher' && player.isMoving) d *= (1 + player.sunCharge/20);
                     damageEnemy(e, d);
-                    
                     if(player.class === 'Melee' && stats.lightning > 0 && Math.random() < 0.3) {
                         triggerLightning(e, stats.lightning);
                     }
@@ -819,16 +795,9 @@ function update(ts) {
         });
     }
 
-    // Guardian Siege Mode
     let currentRate = stats.rate;
     if(stats.siegeMode && stats.isStationary) currentRate /= 2;
-    
-    // Bullet Storm (Assault) Logic
-    if(stats.bulletStorm) {
-        // Always shoot fast, rate improves as you fire?
-        // Simplified: Just very fast rate + high spread
-        currentRate = 3; 
-    }
+    if(stats.bulletStorm) currentRate = 3; 
 
     if(!stats.aura && Math.random() < (1/currentRate)*ts) {
         shoot();
@@ -840,6 +809,24 @@ function update(ts) {
     for(let i=bullets.length-1; i>=0; i--) {
         let b = bullets[i];
         
+        // --- 侍の斬撃処理 (Slash) ---
+        if(b.type === 'slash') {
+            b.x += b.vx * ts; b.y += b.vy * ts; 
+            b.life -= ts;
+            enemies.forEach(e => {
+                if(e.dead || b.hit.includes(e.id)) return;
+                if(Math.hypot(b.x - e.x, b.y - e.y) < b.size + e.size) {
+                    damageEnemy(e, stats.dmg * 2.0); 
+                    createParticles(e.x, e.y, '#fff', 5, 3);
+                    let cutAng = b.angle + Math.PI/2;
+                    particles.push({type:'lightning', x1:e.x-Math.cos(cutAng)*20, y1:e.y-Math.sin(cutAng)*20, x2:e.x+Math.cos(cutAng)*20, y2:e.y+Math.sin(cutAng)*20, life:10, color:'#fff'});
+                    b.hit.push(e.id);
+                }
+            });
+            if(b.life <= 0) { bullets.splice(i, 1); }
+            continue;
+        }
+
         if(b.type === 'omega') {
             b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts;
             b.tick = (b.tick || 0) + ts;
@@ -914,43 +901,23 @@ function update(ts) {
             b.x += b.vx * ts; b.y += b.vy * ts; 
             if(Math.random() < 0.5 * ts && particles.length < MAX_PARTICLES) createParticles(b.x, b.y, b.type==='spirit'?'#8f8':'#f80', 1, 2);
         } else {
-            // Normal bullets
             b.x += b.vx * ts; b.y += b.vy * ts;
             if(b.life !== undefined) {
                 b.life -= ts;
                 if(b.life <= 0) { bullets.splice(i, 1); continue; }
             }
-
-            // Ghost Shot Logic (Screen Wrap + Power Up)
             if(stats.ghostShot) {
                 let wrapped = false;
                 if(b.x < 0) { b.x = canvas.width; wrapped=true; }
                 else if(b.x > canvas.width) { b.x = 0; wrapped=true; }
                 if(b.y < 0) { b.y = canvas.height; wrapped=true; }
                 else if(b.y > canvas.height) { b.y = 0; wrapped=true; }
-
                 if(wrapped) {
                     b.size = Math.min(50, b.size * 1.5); 
-                    
-                    // ダメージ上限（さっきの修正）
                     b.damageMult = Math.min(8.0, (b.damageMult || 1) * 1.5);
-                    
-                    // ▼▼▼ ここを追加（生存時間の制限） ▼▼▼
-                    
-                    // もし弾に寿命が設定されていなければ、初期値として「残り3回ループ分」くらいの時間を与える
-                    if(b.life === undefined) b.life = 180; // 180フレーム = 約3秒
-                    
-                    // ループするたびに寿命を大きく減らす（例：残り時間を半分にする）
-                    b.life -= 60; // 1秒分減らす
-                    
-                    // もし寿命が尽きたら、強制的に消すためのフラグを立てる（次のフレームで消える）
-                    if(b.life <= 0) {
-                        bullets.splice(i, 1); 
-                        continue; 
-                    }
-                    
-                    // ▲▲▲▲▲▲▲▲▲▲▲▲
-
+                    if(b.life === undefined) b.life = 180; 
+                    b.life -= 60; 
+                    if(b.life <= 0) { bullets.splice(i, 1); continue; }
                     b.pierce = 999; 
                 }
             }
@@ -961,7 +928,6 @@ function update(ts) {
             if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
         }
         
-        // Remove if out of bounds (unless ghost)
         if(!stats.ghostShot && (b.x < -boundary || b.x > canvas.width+boundary || b.y < -boundary || b.y > canvas.height+boundary)) { bullets.splice(i, 1); continue; }
 
         let hit = false;
@@ -991,27 +957,21 @@ function update(ts) {
                     damageEnemy(e, finalDmg);
 
                     if(stats.coldFlask && Math.random() < 0.1) {
-                        e.frozen = 60; // 1秒凍結
+                        e.frozen = 60; 
                         createParticles(e.x, e.y, '#0ff', 5, 2);
                     }
-                    
                     if(stats.knockback > 0 && !b.isMini) {
                         let ang = Math.atan2(e.y - player.y, e.x - player.x);
                         e.x += Math.cos(ang) * stats.knockback * 20;
                         e.y += Math.sin(ang) * stats.knockback * 20;
                     }
-                    
-                    // Cluster Striker Logic
                     if(stats.clusterStriker && !b.isMini) {
-                         // Spawn mini bombs
                          Sound.play('explode', 2.0);
                          for(let k=0; k<6; k++) {
                              let ang = (Math.PI*2/6)*k;
                              bullets.push({type:'missile', x:e.x, y:e.y, vx:Math.cos(ang)*5, vy:Math.sin(ang)*5, size:4, speed:0, hit:[e.id], isMini:true});
                          }
                     }
-
-                    // Prism Shooter Split Logic
                     if(stats.prismSplit && !b.isMini && (b.splitCount || 0) < 2) {
                         for(let k=0; k<2; k++) {
                              let ang = Math.atan2(b.vy, b.vx) + (k===0 ? 0.5 : -0.5);
@@ -1023,7 +983,6 @@ function update(ts) {
                              });
                         }
                     }
-
                     if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; 
                     if(stats.shotExplode) { 
                         Sound.play('explode', 2.0);
@@ -1136,15 +1095,12 @@ function update(ts) {
                     Sound.play('hit');
                     if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#0f0', 3, 2);
                 }
-                
-                // Earth Shaker Collision
                 if(stats.isEarthShaker) {
-                    damageEnemy(e, stats.dmg * 2); // Body slam damage
+                    damageEnemy(e, stats.dmg * 2); 
                     Sound.play('bash');
                     let kickAng = Math.atan2(e.y - player.y, e.x - player.x);
                     e.x += Math.cos(kickAng) * 30; e.y += Math.sin(kickAng) * 30;
                 }
-
                 if(player.class === 'Melee' && player.slamCd <= 0) {
                     let cd = Math.max(10, 60 - stats.rate);
                     player.slamCd = cd; 
@@ -1168,13 +1124,10 @@ function update(ts) {
     
     enemies = enemies.filter(e => !e.dead);
 
-    // ★ XP Orbs & Magnet Logic Fix
     if(expOrbs.length > MAX_ORBS) {
         let removed = expOrbs.splice(0, expOrbs.length - MAX_ORBS);
-        // ★ 100% Auto Collect
         removed.forEach(o => { 
             if(gameActive) {
-                // 値を0.7倍にして回収
                 addExp(Math.floor(o.val * 0.7), true); 
             }
         });
@@ -1248,6 +1201,38 @@ function triggerBomb() {
 }
 
 function shoot() {
+    // --- 侍 (Samurai) の特殊射撃 ---
+    if(stats.samuraiMode) {
+        let target = null, minD = Infinity;
+        enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-player.x, e.y-player.y); if(d<minD){minD=d; target=e;} });
+        
+        let angle = target ? Math.atan2(target.y-player.y, target.x-player.x) : (player.isMoving ? Math.atan2(joyMoveY||0, joyMoveX||1) : -Math.PI/2);
+        if(!target && !player.isMoving && joyTouchId === null) angle = -Math.PI/2; // デフォルト上向き
+
+        // 斬撃を生成 (弾速0, 巨大な判定, 短い寿命)
+        Sound.play('missile', 2.0); // 高音でキレのある音
+        bullets.push({
+            type: 'slash', x: player.x, y: player.y, 
+            vx: Math.cos(angle)*15, vy: Math.sin(angle)*15, // 少しだけ前に進む
+            angle: angle,
+            size: 150, // 巨大な判定
+            life: 15,  // 一瞬で消える
+            color: '#fff', hit: [], pierce: 999,
+            damageMult: 1.0
+        });
+        
+        // 追加効果: 抜刀の衝撃波（遠距離用）
+        if(stats.swordWave || stats.multi > 1) {
+             let waveCount = stats.multi;
+             for(let i=0; i<waveCount; i++) {
+                 let waveAng = angle + (Math.random()-0.5)*0.5;
+                 bullets.push({type:'normal', x:player.x, y:player.y, vx:Math.cos(waveAng)*20, vy:Math.sin(waveAng)*20, size:5, color:'#adf', pierce:5, life:40});
+             }
+        }
+        return; // 通常弾処理はしない
+    }
+    // ----------------------------
+
     let target = null;
     let minD = Infinity;
     
@@ -1265,16 +1250,14 @@ function shoot() {
     if(player.class === 'Sniper') count = 1; 
     if(stats.infiniteMag) count += 3; 
     
-    // Guardian Siege Mode
     let currentDmg = stats.dmg;
     if(stats.siegeMode && stats.isStationary) currentDmg *= 2;
-
     if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
 
     let spread = 0.1;
     if(stats.bulletStorm) {
-        spread = 0.5 + Math.sin(Date.now()*0.01)*0.5; // Chaos spread
-        count += 3; // Extra bullets
+        spread = 0.5 + Math.sin(Date.now()*0.01)*0.5; 
+        count += 3; 
     }
     let startAngle = angle - (spread * (count-1)) / 2;
 
@@ -1288,65 +1271,43 @@ function shoot() {
         let bSize = stats.railgun ? 10 : 5;
         let bDmgMult = 1.0;
 
-        // トリックスター：弾の性能をランダム化
+        // 雷帝モードの弾
+        if(stats.tempestMode) {
+             bColor = '#d0f'; bSize = 6;
+        }
+
         if(stats.tricksterMode) {
             let cols = ['#f00', '#0f0', '#00f', '#ff0', '#f0f', '#0ff'];
             bColor = cols[Math.floor(Math.random()*cols.length)];
-            
             if(stats.chaosShot) bSize = 3 + Math.random() * 10;
-            
             let roll = Math.random();
-            if(roll < 0.2) stats.pierce = 99; // たまに貫通
-            else if(roll < 0.4) stats.homing = 1; // たまに誘導
+            if(roll < 0.2) stats.pierce = 99; 
+            else if(roll < 0.4) stats.homing = 1; 
             else stats.homing = 0;
-            
-            // ロシアンルーレット
             if(stats.russianRoulette) {
-                if(Math.random() < 0.16) { 
-                    bDmgMult = 10; bSize *= 2; bColor='#fff'; // 当たり
-                } else if(Math.random() < 0.1) {
-                    bDmgMult = 0.1; bSize = 2; bColor='#444'; // ハズレ
-                }
+                if(Math.random() < 0.16) { bDmgMult = 10; bSize *= 2; bColor='#fff'; } 
+                else if(Math.random() < 0.1) { bDmgMult = 0.1; bSize = 2; bColor='#444'; }
             }
         }
 
         bullets.push({
-            type: bType,
-            x: player.x,
-            y: player.y,
-            vx: vx,
-            vy: vy,
-            size: bSize,
-            color: bColor,
-            hit: [],
-            pierce: stats.pierce,
-            damageMult: bDmgMult, // ★ダメージ倍率を追加
-            isMini: false
+            type: bType, x: player.x, y: player.y,
+            vx: vx, vy: vy,
+            size: bSize, color: bColor,
+            hit: [], pierce: stats.pierce,
+            damageMult: bDmgMult, isMini: false
         });
-        
     }
 
     if(stats.doppelganger && player.clone) {
-            bullets.push({
-                type: bType || 'normal',
-                x: player.clone.x,
-                y: player.clone.y,
-                vx: -vx, // プレイヤーと逆方向に発射
-                vy: -vy,
-                size: bSize || (stats.railgun ? 10 : 5),
-                color: bColor || '#fff', // 本体と同じ色
-                hit: [],
-                pierce: stats.pierce,
-                damageMult: bDmgMult || 1,
-                isMini: false
-            });
-        }
-        // ▲▲▲▲▲▲▲▲▲▲▲▲
-
-    if(stats.missileChance > 0 && Math.random() < stats.missileChance) { 
-        fireMissile();
+        bullets.push({
+            type: 'normal', x: player.clone.x, y: player.clone.y,
+            vx: -Math.cos(startAngle)*stats.bulletSpeed, vy: -Math.sin(startAngle)*stats.bulletSpeed,
+            size: 5, color: '#fff', hit: [], pierce: stats.pierce, damageMult: 1, isMini: false
+        });
     }
 
+    if(stats.missileChance > 0 && Math.random() < stats.missileChance) fireMissile();
     Sound.play('shoot', 1.0 + Math.random()*0.2);
 }
 
@@ -1495,7 +1456,6 @@ function draw() {
         ctx.beginPath(); ctx.arc(player.x, player.y, 250, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)'; ctx.lineWidth=1; ctx.stroke();
     }
-    // New: Electro Fence Vis
     if(stats.electroFence) {
         ctx.strokeStyle = `rgba(136, 255, 255, ${(electroFenceTimer/60)})`;
         ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(player.x, player.y, 150, 0, Math.PI*2); ctx.stroke();
@@ -1503,12 +1463,10 @@ function draw() {
 
     gasClouds.forEach(g => { ctx.fillStyle = `rgba(100, 0, 150, ${g.life/100})`; ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, Math.PI*2); ctx.fill(); });
 
-    // Sentries
     sentries.forEach(s => {
         ctx.fillStyle = '#0f0'; ctx.fillRect(s.x-10, s.y-10, 20, 20);
         ctx.strokeStyle = '#fff'; ctx.lineWidth=2; ctx.strokeRect(s.x-10, s.y-10, 20, 20);
     });
-    // Tesla Grid Lines
     if(stats.teslaGrid && sentries.length >= 2) {
         ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.shadowColor='#0ff';
         ctx.beginPath();
@@ -1525,7 +1483,6 @@ function draw() {
             ctx.save(); ctx.translate(sw.x, sw.y); ctx.rotate(Date.now()*0.1);
             ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.fill();
             ctx.restore();
-            // Trail
             ctx.strokeStyle = 'rgba(255, 0, 100, 0.3)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(sw.x, sw.y); ctx.stroke();
         });
     }
@@ -1542,7 +1499,7 @@ function draw() {
         let r = stats.auraRange * stats.auraScale;
         let auraColor = '0, 255, 255';
         if(player.subClass === 'SunCrusher') {
-            auraColor = '255, 100, 0'; // Magma
+            auraColor = '255, 100, 0'; 
             if(player.isMoving) r += player.sunCharge * 2;
         }
 
@@ -1568,13 +1525,11 @@ function draw() {
         ctx.restore();
     });
 
-    // Force Field Vis
     if(stats.forceField && stats.forceFieldCd <= 0) {
         ctx.strokeStyle = `rgba(0, 255, 255, 0.8)`; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size + 10, 0, Math.PI*2); ctx.stroke();
     }
 
-    // ★ Draw Items
     items.forEach(it => {
         ctx.save(); ctx.translate(it.x, it.y);
         let s = 1.0 + Math.sin(Date.now()*0.01)*0.2;
@@ -1592,6 +1547,27 @@ function draw() {
     }
 
     bullets.forEach(b => { 
+        if(b.type === 'slash') {
+            ctx.save();
+            ctx.translate(b.x, b.y);
+            ctx.rotate(b.angle);
+            ctx.globalAlpha = Math.max(0, b.life / 15); 
+            
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 20; ctx.shadowColor = '#0ff';
+            ctx.beginPath();
+            ctx.arc(0, 0, b.size, -Math.PI/3, Math.PI/3); 
+            ctx.fill();
+
+            ctx.strokeStyle = '#ccffff'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(b.size + 20, 0);
+            ctx.stroke();
+            
+            ctx.restore();
+            return;
+        }
+
         if(b.type === 'omega') {
             ctx.fillStyle = `rgba(255, 0, 255, ${b.life/30})`;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1623,7 +1599,6 @@ function draw() {
             ctx.shadowBlur = 20; ctx.shadowColor = 'red'; ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); ctx.shadowBlur = 0;
             ctx.fillStyle = 'red'; ctx.fillRect(e.x-40, e.y-e.size-20, 80, 8); ctx.fillStyle = '#0f0'; ctx.fillRect(e.x-40, e.y-e.size-20, 80*(e.hp/e.maxHp), 8);
         } else if(e.type === 'golem') {
-            // Golem: Square shape
             ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
             ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
         } else {
@@ -2161,59 +2136,55 @@ function showEvo() {
     c.innerHTML = ''; m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "クラス進化";
 
-    // ★ GOD BUFF: スナイパー以外を魔改造レベルで強化
     let evos = [
+        // --- 新規追加クラス ---
+        {t:"⚔️ 侍・剣豪 (Samurai)", d:"一閃: 射程は短いが、前方の敵を一瞬で葬る「斬撃」を放つ。", f:()=>{
+            player.class="Samurai"; player.color="#ffffff"; // 白銀
+            stats.samuraiMode = true; // 専用フラグ
+            stats.rate = 45; // 攻撃間隔は遅い
+            stats.dmg = 300; // 一撃が重い
+            stats.spd += 5;  // 足が速い
+            stats.pierce = 999; // 無限貫通
+            stats.knockback = 0; // ノックバックさせず切り裂く
+        }},
+        {t:"⚡ 雷帝 (Tempest)", d:"天変地異: 常に周囲に落雷が発生し、攻撃弾も連鎖雷撃を引き起こす。", f:()=>{
+            player.class="Tempest"; player.color="#8A2BE2"; // 紫電
+            stats.tempestMode = true; // 専用フラグ
+            stats.rate = 8;  // 高速連射
+            stats.dmg = 15;  
+            stats.lightning = 3; // 最初からライトニングLv3
+            stats.bulletSpeed = 25; // 弾速も速い
+        }},
+        // --- 既存クラス ---
         {t:"🔫 アサルト", d:"連射特化: マシンガン(連射・2発・貫通)解禁", f:()=>{
             player.class="Assault"; player.color="#00ffff"; 
-            stats.rate=4; // マシンガン並み
-            stats.dmg+=10; 
-            stats.multi=1; // 最初から2発
-            stats.pierce=1; // 最初から貫通
+            stats.rate=4; stats.dmg+=10; stats.multi=1; stats.pierce=1; 
         }},
         {t:"🛡️ ヴァンガード", d:"近接: 超・広範囲 & HP+500/リジェネ+10", f:()=>{
             player.class="Melee"; player.color="#ff3333"; 
-            stats.aura=true; 
-            stats.auraRange=180; // 画面半分くらい覆う
-            stats.spd+=4; 
-            player.maxHp+=500; player.hp+=500; 
-            stats.regen+=10; // 最初から超回復
+            stats.aura=true; stats.auraRange=180; stats.spd+=4; 
+            player.maxHp+=500; player.hp+=500; stats.regen+=10; 
         }},
         {t:"🔭 スナイパー", d:"遠距離: 💥破片 & 🔙ノックバック", f:()=>{
             player.class="Sniper"; player.color="#ffff00"; 
             stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=0;
-            stats.drones+=1; 
-            stats.shrapnel=true; 
-            stats.knockback=1; 
+            stats.drones+=1; stats.shrapnel=true; stats.knockback=1; 
         }},
         {t:"🧱 ガーディアン", d:"機動要塞: タレット8基展開・反射装甲・高耐久", f:()=>{
             player.class="Guardian"; player.color="#00ff88"; 
-            stats.armor+=20; // ほぼ無敵
-            player.maxHp+=1500; player.hp=player.maxHp; 
-            stats.spd-=0.5; 
-            stats.magnet+=200; // 動かなくていい
-            stats.sentryRate=2.5; // タレットが暴れる
-            stats.sentryMax=6; // 8個置ける
-            stats.sentrySystem=true; spawnSentry();
-            stats.spikeReflect=true; // 反射ダメージ
+            stats.armor+=20; player.maxHp+=1500; player.hp=player.maxHp; 
+            stats.spd-=0.5; stats.magnet+=200; stats.sentryRate=2.5; 
+            stats.sentryMax=6; stats.sentrySystem=true; spawnSentry(); stats.spikeReflect=true; 
         }},
         {t:"⚗️ アルケミスト", d:"毒物劇物: 毒ガス・凍結・弱体化をバラ撒く", f:()=>{
-            player.class="Alchemist"; player.color="#aa00ff"; // 紫色
-            stats.poison = 5; // 最初から毒レベルが高い
-            stats.dmg *= 0.7; // 直接攻撃力は低い
-            stats.rate *= 0.9; // 攻撃速度は少し速い
-            
-            // アルケミスト専用フラグ（後でロジックに使います）
-            stats.alchemistMode = true; 
-            stats.neurotoxin = false; // 神経毒（スロー効果）
-            stats.pandemic = false;   // パンデミック（敵死亡時に毒拡散）
+            player.class="Alchemist"; player.color="#aa00ff"; 
+            stats.poison = 5; stats.dmg *= 0.7; stats.rate *= 0.9; 
+            stats.alchemistMode = true; stats.neurotoxin = false; stats.pandemic = false;
         }},
         {t:"🃏 トリックスター", d:"運否天賦: 弾の性能が毎回ランダムに変化する。", f:()=>{
             player.class="Trickster"; player.color="#ff00ff"; 
-            stats.rate = 5; // かなり連射が速い
-            stats.dmg = 10; // 威力は低め
-            stats.tricksterMode = true; // 専用フラグ
-            stats.slotMachine = false;  // マイルストーン用
-            stats.joker = false;        // マイルストーン用
+            stats.rate = 5; stats.dmg = 10; stats.tricksterMode = true; 
+            stats.slotMachine = false; stats.joker = false; 
         }}
     ];
 
