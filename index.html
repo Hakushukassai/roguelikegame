@@ -2337,6 +2337,9 @@ function showUpgrade() {
     pool.push(createOpt('crit', '🎯', 'クリティカル', 5, '%', (v)=>stats.critChance+=v/100, (v)=>`会心率 +${v}%`));
     pool.push(createOpt('magnet', '🧲', '収集範囲', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
     
+    // ★【修正】ここに追加しました（全クラス共通化）
+    pool.push(createOpt('lightning', '🌩️', '雷撃強化', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
+
     // レア枠：超回復
     if(Math.random() < 0.2) {
         pool.push(createOpt('super_regen', '🏥', '超回復', 10, '', (v)=>stats.regen+=v, (v)=>`HP回復 +${v}/s`));
@@ -2348,21 +2351,15 @@ function showUpgrade() {
     // 2. クラス別出し分け & 重要ステータス
     // =========================================
     
-    // ★【修正】攻撃範囲 (Area): ヴァンガード(Melee)等は出やすくする
+    // 攻撃範囲 (Area): ヴァンガード(Melee)等は出やすくする
     let areaWeight = 1;
-    if(player.class === 'Melee' || player.class === 'Guardian' || player.class === 'Alchemist') areaWeight = 3; // 3倍出やすく
+    if(player.class === 'Melee' || player.class === 'Guardian' || player.class === 'Alchemist') areaWeight = 3; 
     
     for(let i=0; i<areaWeight; i++) {
         pool.push(createOpt('area', '💥', '攻撃範囲', 10, '%', (v)=>{
             stats.areaScale += v/100;
             if(player.class === 'Melee') player.size *= 1.05; 
         }, (v)=>`サイズ +${v}%`));
-    }
-
-    // ★【修正】ライトニング (Lightning): リストに追加！
-    // ヴァンガード(Melee)とテンペスト(Tempest)は必ず候補に入るように
-    if(player.class === 'Melee' || player.class === 'Tempest' || stats.lightning > 0 || Math.random() < 0.3) {
-        pool.push(createOpt('lightning', '🌩️', '雷撃強化', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
     }
 
     // 弾速 (Melee/Samurai/Alchemist以外)
