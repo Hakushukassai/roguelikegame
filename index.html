@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v3.2: Guardian FIXD</title>
+    <title>Evo Lite v3.2.1: Guardian FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -1105,7 +1105,12 @@ function update(ts) {
     if(expOrbs.length > MAX_ORBS) {
         let removed = expOrbs.splice(0, expOrbs.length - MAX_ORBS);
         // ★ 100% Auto Collect
-        removed.forEach(o => { if(gameActive) addExp(o.val, true); });
+        removed.forEach(o => { 
+            if(gameActive) {
+                // 値を0.7倍にして回収
+                addExp(Math.floor(o.val * 0.7), true); 
+            }
+        });
     }
     for(let i=expOrbs.length-1; i>=0; i--) {
         if(!gameActive) break; 
