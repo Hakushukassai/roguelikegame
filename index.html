@@ -1689,16 +1689,18 @@ function spawnEnemy(mode, time) {
 function createEnemy(type, x, y) {
     let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0 };
     
-    // 基本のHP倍率計算
     let hpMult = Math.pow(1.10, level - 1); 
     if(singularityMode) hpMult *= 2.0;
 
-    // ▼▼▼ 追加: 余裕がある時のハードモード補正 ▼▼▼
-    // レベル40以上 かつ プレイヤーHPが90%以上なら、敵HPを3倍にする
-    if (level >= 40 && player.hp >= player.maxHp * 0.9) {
-        hpMult *= 3.0;
+    // ▼▼▼ ここを修正（大きいレベルから順に判定します） ▼▼▼
+    if (player.hp >= player.maxHp * 0.9) {
+        if (level >= 60) {
+            hpMult *= 8.0; // Lv50以上なら10倍！
+        } else if (level >= 40) {
+            hpMult *= 5.0;  // Lv40～49なら5倍
+        }
     }
-    // ▲▲▲ 追加終わり ▲▲▲
+    // ▲▲▲ 修正終わり ▲▲▲
 
     if(type === 'boss') { 
         e.hp = 3000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
@@ -1724,12 +1726,6 @@ function createEnemy(type, x, y) {
     if(singularityMode) { e.color = '#000000'; e.speed *= 1.2; }
 
     enemies.push(e);
-}
-
-function triggerWarning() {
-    let w = document.getElementById('warning-overlay'); w.style.display = 'flex';
-    let count = 0; 
-    let iv = setInterval(() => { Sound.play('alert'); count++; if(count >= 3) clearInterval(iv); }, 800);
 }
 
 function damageEnemy(e, dmg) {
