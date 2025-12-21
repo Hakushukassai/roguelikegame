@@ -2292,6 +2292,9 @@ function showUpgrade() {
     pool.push(createOpt('multi', player.class==='Melee'?'⚔️':'🔫', player.class==='Melee'?'ブレード+':'マルチ/盾', 1, '', (v)=>stats.multi+=v, (v)=>player.class==='Melee'?`回転刃 +${v}`:`発射数 +${v}`));
     pool.push(createOpt('pierce', '🏹', '貫通弾', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
     pool.push(createOpt('regen', '💖', 'リジェネ', 2, '', (v)=>stats.regen+=v, (v)=>`回復 +${v}/s`));
+    if(Math.random() < 0.3) {
+        pool.push(createOpt('super_regen', '🏥', '超回復', 10, '', (v)=>stats.regen+=v, (v)=>`回復 +${v}/s`));
+    }
     pool.push(createOpt('magnet', '🧲', 'マグネット', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
 
     // Class Specifics (Fixed - No Rare Multiplier usually, but we can boost them)
