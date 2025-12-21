@@ -2406,6 +2406,12 @@ function gameOver() {
     document.getElementById('game-over').style.display = 'flex';
 }
 
+function triggerWarning() {
+    Sound.play('alert');
+    let overlay = document.getElementById('warning-overlay');
+    overlay.style.display = 'flex'; // CSSでflexレイアウトが指定されているためflexにする
+}
+
 updateUI();
 </script>
 </body>
