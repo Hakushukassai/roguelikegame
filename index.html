@@ -130,7 +130,7 @@
 
 <script>
 // --- Config ---
-const MAX_ENEMIES = 1000;
+const MAX_ENEMIES = 500;
 const MAX_PARTICLES = 500; 
 const MAX_ORBS = 400; 
 const MAX_TEXTS = 50;
@@ -452,11 +452,11 @@ function update(ts) {
             s.cooldown -= ts;
             if(s.cooldown <= 0) {
                 let target = null;
-                let minD = 400;
+                let minDSq = 400 * 400; 
                 enemies.forEach(e => {
                     if(e.dead) return;
-                    let d = Math.hypot(e.x - s.x, e.y - s.y);
-                    if(d < minD) { minD = d; target = e; }
+                    let dSq = (e.x - s.x)**2 + (e.y - s.y)**2;
+                    if(dSq < minDSq) { minDSq = dSq; target = e; }
                 });
                 if(target) {
                     let ang = Math.atan2(target.y - s.y, target.x - s.x);
@@ -518,13 +518,11 @@ function update(ts) {
         }
     }
 
-    // --- Special Skills Logic ---
     if(stats.omegaLaser) {
         player.laserCd -= ts;
         if(player.laserCd <= 0) { fireOmegaLaser(); player.laserCd = 180; }
     }
     
-    // --- 雷帝 (Tempest) のパッシブ落雷 ---
     if(stats.tempestMode) {
         if(Math.random() < 0.1 * ts) { 
             let targets = enemies.filter(e => !e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 500);
@@ -809,41 +807,39 @@ function update(ts) {
     for(let i=bullets.length-1; i>=0; i--) {
         let b = bullets[i];
         
-        // --- 侍の斬撃処理 (Slash) - 軽量化版 ---
+        // --- 侍の斬撃処理 (Slash) - 超軽量化版 ---
         if(b.type === 'slash') {
             b.x += b.vx * ts; b.y += b.vy * ts; 
             b.life -= ts;
             
-            // ★処理落ち対策: 1フレームにエフェクトを出す敵の上限を設定
-            let effectsSpawned = 0;
-            const MAX_EFFECTS_PER_FRAME = 3;
+            if(b.life > 12) {
+                let effectsSpawned = 0;
+                const MAX_EFFECTS_PER_FRAME = 3;
 
-            enemies.forEach(e => {
-                if(e.dead || b.hit.includes(e.id)) return;
-                
-                if(Math.hypot(b.x - e.x, b.y - e.y) < b.size + e.size) {
-                    damageEnemy(e, stats.dmg * 2.0); 
+                enemies.forEach(e => {
+                    // ★修正: includes -> has
+                    if(e.dead || b.hit.has(e.id)) return; 
                     
-                    // エフェクト生成（確率 & 上限付き）
-                    if(effectsSpawned < MAX_EFFECTS_PER_FRAME && Math.random() < 0.3) {
-                        createParticles(e.x, e.y, '#fff', 3, 2); // 粒子数も減らす
-                        let cutAng = b.angle + Math.PI/2;
-                        particles.push({type:'lightning', x1:e.x-Math.cos(cutAng)*20, y1:e.y-Math.sin(cutAng)*20, x2:e.x+Math.cos(cutAng)*20, y2:e.y+Math.sin(cutAng)*20, life:10, color:'#fff'});
+                    let range = b.size + e.size;
+                    if(Math.abs(b.x - e.x) > range || Math.abs(b.y - e.y) > range) return;
+
+                    if((b.x - e.x)**2 + (b.y - e.y)**2 < range * range) {
+                        damageEnemy(e, stats.dmg * 2.0); 
                         
-                        // ライトニング連鎖もここで制限付きで発動
-                        if(stats.lightning > 0 && Math.random() < 0.5) {
+                        if(effectsSpawned < MAX_EFFECTS_PER_FRAME && Math.random() < 0.3) {
+                            createParticles(e.x, e.y, '#fff', 3, 2); 
+                            // ... (エフェクト処理省略) ...
+                            effectsSpawned++;
+                        } else if(stats.lightning > 0 && Math.random() < 0.05) {
                             triggerLightning(e, stats.lightning);
                         }
-                        
-                        effectsSpawned++;
-                    } else if(stats.lightning > 0 && Math.random() < 0.05) {
-                        // エフェクトが出なくても稀に雷は落ちる（バランス調整）
-                        triggerLightning(e, stats.lightning);
-                    }
 
-                    b.hit.push(e.id);
-                }
-            });
+                        // ★修正: push -> add
+                        b.hit.add(e.id);
+                    }
+                });
+            }
+
             if(b.life <= 0) { bullets.splice(i, 1); }
             continue;
         }
@@ -891,8 +887,12 @@ function update(ts) {
         
         if(b.type !== 'missile' && stats.homing > 0) {
             let detectRange = 250 + (stats.homing * 50); 
-            let target = null, minD = detectRange;
-            enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-b.x, e.y-b.y); if(d < minD && !b.hit.includes(e.id)) { minD = d; target = e; } });
+            let target = null, minDSq = detectRange * detectRange;
+            enemies.forEach(e => { 
+                if(e.dead) return; 
+                let dSq = (e.x-b.x)**2 + (e.y-b.y)**2;
+                if(dSq < minDSq && !b.hit.includes(e.id)) { minDSq = dSq; target = e; } 
+            });
             
             if(target) {
                 let desiredAngle = Math.atan2(target.y - b.y, target.x - b.x);
@@ -956,10 +956,18 @@ function update(ts) {
             let e = enemies[j];
             if(e.dead || b.hit.includes(e.id)) continue;
             
+            // ★高速化: 平方根計算を避ける
             let bulletHitSize = (player.class === 'Sniper' && b.type === 'normal') ? b.size + 15 : b.size;
             if(stats.titan) bulletHitSize *= 1.5;
+            let collisionR = bulletHitSize + e.size;
+            
+            // x, y の差分チェックだけで弾ける場合は弾く（AABB簡易判定）
+            if(Math.abs(b.x - e.x) > collisionR || Math.abs(b.y - e.y) > collisionR) continue;
 
-            if(Math.hypot(b.x-e.x, b.y-e.y) < bulletHitSize + e.size) {
+            // 距離の二乗で判定 (sqrtを使わない)
+            let distSq = (b.x - e.x)**2 + (b.y - e.y)**2;
+            if(distSq < collisionR * collisionR) {
+
                 if(b.type === 'missile') {
                     Sound.play('explode');
                     particles.push({type:'shockwave', x:b.x, y:b.y, size:10, life:15, color:'#f80'});
@@ -1230,28 +1238,50 @@ function shoot() {
         let angle = target ? Math.atan2(target.y-player.y, target.x-player.x) : (player.isMoving ? Math.atan2(joyMoveY||0, joyMoveX||1) : -Math.PI/2);
         if(!target && !player.isMoving && joyTouchId === null) angle = -Math.PI/2; 
 
-        // ★修正ポイント: 固定値15 ではなく stats.bulletSpeed を参照するように変更
-        // これにより「弾速」を上げると、斬撃がより遠くまで（速く）届くようになります
+        // 弾速ステータスを反映
         let slashSpeed = stats.bulletSpeed * 0.9; 
 
         Sound.play('missile', 2.0); 
         bullets.push({
             type: 'slash', x: player.x, y: player.y, 
-            vx: Math.cos(angle) * slashSpeed, vy: Math.sin(angle) * slashSpeed, // ここを変更
+            vx: Math.cos(angle) * slashSpeed, vy: Math.sin(angle) * slashSpeed, 
             angle: angle,
             size: 150, 
             life: 15,  
-            color: '#fff', hit: [], pierce: 999,
+            color: '#fff', hit: new Set(), pierce: 999, // <--- new Set() に変更
             damageMult: 1.0
         });
         
         // 追加効果: 抜刀の衝撃波
         if(stats.swordWave || stats.multi > 1) {
              let waveCount = stats.multi;
+             
+             // ★軽量化: 衝撃波の数に上限(6個)を設け、それ以上は「威力」と「サイズ」に還元する
+             let waveDmgMult = 1.0;
+             let waveSize = 5;
+             
+             if(waveCount > 6) {
+                 let extra = waveCount - 6;
+                 // 余剰分を威力とサイズに変換（無限に弾が増えるのを防ぐ）
+                 waveDmgMult += extra * 0.3; 
+                 waveSize += Math.min(15, extra * 0.5); 
+                 waveCount = 6; 
+             }
+
              for(let i=0; i<waveCount; i++) {
                  let waveAng = angle + (Math.random()-0.5)*0.5;
-                 // 衝撃波も弾速の影響を受ける
-                 bullets.push({type:'normal', x:player.x, y:player.y, vx:Math.cos(waveAng)*stats.bulletSpeed*1.2, vy:Math.sin(waveAng)*stats.bulletSpeed*1.2, size:5, color:'#adf', pierce:5, life:40});
+                 bullets.push({
+                    type:'normal', 
+                    x:player.x, y:player.y, 
+                    vx:Math.cos(waveAng)*stats.bulletSpeed*1.2, 
+                    vy:Math.sin(waveAng)*stats.bulletSpeed*1.2, 
+                    size:waveSize, 
+                    color:'#adf', 
+                    pierce:5, 
+                    life:40,
+                    hit: [],  // ★これ（初期化）を追加！
+                    damageMult: waveDmgMult
+                });
              }
         }
         return; 
@@ -1279,6 +1309,17 @@ function shoot() {
     if(stats.siegeMode && stats.isStationary) currentDmg *= 2;
     if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
 
+    // ★軽量化: 通常弾も多すぎる場合は間引いて強化する
+    // これによりアサルトなどでMultiを取りすぎた時の重さも解消されます
+    let bDmgMultBase = 1.0;
+    let bSizeBase = stats.railgun ? 10 : 5;
+    
+    if(count > 20) {
+        let extra = count - 20;
+        bDmgMultBase += extra * 0.1; // 威力アップ
+        count = 20; // 最大20発同時発射に制限
+    }
+
     let spread = 0.1;
     if(stats.bulletStorm) {
         spread = 0.5 + Math.sin(Date.now()*0.01)*0.5; 
@@ -1293,8 +1334,8 @@ function shoot() {
         
         let bType = 'normal';
         let bColor = stats.ghostShot ? '#88ff88' : (stats.prismSplit ? '#f0f' : '#fff');
-        let bSize = stats.railgun ? 10 : 5;
-        let bDmgMult = 1.0;
+        let bDmgMult = bDmgMultBase;
+        let bSize = bSizeBase;
 
         if(stats.tempestMode) {
              bColor = '#d0f'; bSize = 6;
@@ -1309,8 +1350,8 @@ function shoot() {
             else if(roll < 0.4) stats.homing = 1; 
             else stats.homing = 0;
             if(stats.russianRoulette) {
-                if(Math.random() < 0.16) { bDmgMult = 10; bSize *= 2; bColor='#fff'; } 
-                else if(Math.random() < 0.1) { bDmgMult = 0.1; bSize = 2; bColor='#444'; }
+                if(Math.random() < 0.16) { bDmgMult *= 10; bSize *= 2; bColor='#fff'; } 
+                else if(Math.random() < 0.1) { bDmgMult *= 0.1; bSize = 2; bColor='#444'; }
             }
         }
 
@@ -1475,6 +1516,8 @@ function draw() {
     for(let i=0; i<canvas.height; i+=100) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
     ctx.stroke();
 
+    // ★軽量化: 巨大な円などの描画を簡素化（shadowBlur削除など）
+
     if(stats.absoluteZero) {
         ctx.fillStyle = 'rgba(0, 255, 255, 0.05)';
         ctx.beginPath(); ctx.arc(player.x, player.y, 250, 0, Math.PI*2); ctx.fill();
@@ -1492,13 +1535,12 @@ function draw() {
         ctx.strokeStyle = '#fff'; ctx.lineWidth=2; ctx.strokeRect(s.x-10, s.y-10, 20, 20);
     });
     if(stats.teslaGrid && sentries.length >= 2) {
-        ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.shadowColor='#0ff';
+        ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3; // shadowBlur削除
         ctx.beginPath();
         ctx.moveTo(sentries[0].x, sentries[0].y);
         for(let i=1; i<sentries.length; i++) ctx.lineTo(sentries[i].x, sentries[i].y);
         ctx.lineTo(sentries[0].x, sentries[0].y);
         ctx.stroke();
-        ctx.shadowBlur = 0;
     }
 
     if(player.class === 'Melee' && flyingSwords.length > 0) {
@@ -1565,9 +1607,10 @@ function draw() {
     });
 
     if(player.invincible % 10 < 5) {
-        ctx.shadowBlur = 30; ctx.shadowColor = player.color; ctx.fillStyle = player.color;
+        // ★軽量化: プレイヤーの影も削除
+        ctx.fillStyle = player.color;
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(player.x, player.y, player.size*0.6, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(player.x, player.y, player.size*0.6, 0, Math.PI*2); ctx.fill(); 
     }
 
     bullets.forEach(b => { 
@@ -1578,7 +1621,7 @@ function draw() {
             ctx.globalAlpha = Math.max(0, b.life / 15); 
             
             ctx.fillStyle = '#fff';
-            ctx.shadowBlur = 20; ctx.shadowColor = '#0ff';
+            // ★軽量化: 斬撃の影も削除
             ctx.beginPath();
             ctx.arc(0, 0, b.size, -Math.PI/3, Math.PI/3); 
             ctx.fill();
@@ -1611,16 +1654,16 @@ function draw() {
         }
     });
     
-    ctx.shadowBlur = 10; ctx.shadowColor = '#f00'; 
+    // ★軽量化: 敵弾の影削除
     ctx.fillStyle = '#fff'; 
     enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
-    ctx.shadowBlur = 0;
 
     enemies.forEach(e => {
         ctx.fillStyle = e.frozen > 0 ? '#0ff' : (e.flash > 0 ? '#fff' : e.color); 
         ctx.beginPath();
         if(e.type === 'boss') {
-            ctx.shadowBlur = 20; ctx.shadowColor = 'red'; ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); ctx.shadowBlur = 0;
+            // ボスだけは特別なので影を残しても良いが、軽量化優先で削除
+            ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
             ctx.fillStyle = 'red'; ctx.fillRect(e.x-40, e.y-e.size-20, 80, 8); ctx.fillStyle = '#0f0'; ctx.fillRect(e.x-40, e.y-e.size-20, 80*(e.hp/e.maxHp), 8);
         } else if(e.type === 'golem') {
             ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
@@ -1640,10 +1683,10 @@ function draw() {
     
     particles.forEach(p => {
         if(p.type === 'lightning') {
-            ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.shadowColor = p.color; ctx.globalAlpha = p.life / 10;
+            ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = p.life / 10; // shadowBlur削除
             ctx.beginPath(); ctx.moveTo(p.x1, p.y1);
             let midX = (p.x1 + p.x2) / 2 + (Math.random()-0.5)*30; let midY = (p.y1 + p.y2) / 2 + (Math.random()-0.5)*30;
-            ctx.lineTo(midX, midY); ctx.lineTo(p.x2, p.y2); ctx.stroke(); ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+            ctx.lineTo(midX, midY); ctx.lineTo(p.x2, p.y2); ctx.stroke(); ctx.globalAlpha = 1.0; 
         } else if(p.type === 'shockwave') {
             ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = p.life/15;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
@@ -1742,40 +1785,41 @@ function damageEnemy(e, dmg) {
     if(stats.execute && (e.hp < e.maxHp * 0.3)) dmg = e.hp + 9999; 
 
     e.hp -= dmg; e.flash = 5; 
-    if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 2, 2); 
+    
+    // ★軽量化: パーティクル生成を確率で間引く（ヒット時は低確率でのみ発生）
+    if(particles.length < MAX_PARTICLES && Math.random() < 0.2) createParticles(e.x, e.y, '#fff', 1, 2); 
+    
+    // ヒット音は鳴らす（同時発音制限はSound側にあるためOK）
     Sound.play('hit');
-    if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
+
+    // ★軽量化: ダメージ数字の表示を間引く（クリティカル、ボス、または確率20%でのみ表示）
+    // 大量に敵がいるときに画面が数字で埋め尽くされるのを防ぎます
+    if(isCrit || e.type === 'boss' || texts.length < 5 || Math.random() < 0.2) {
+        if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
+    }
     
     if(e.hp <= 0) {
         e.dead = true; 
-        Sound.play('explode'); screenShake = e.type === 'boss' ? 20 : 3;
-        if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?50:15, 5);
-        particles.push({type:'shockwave', x:e.x, y:e.y, size:10, life:15, color:'#fff'});
-        
+        Sound.play('explode'); 
+        screenShake = e.type === 'boss' ? 20 : 2; // シェイクも控えめに
+
+        // chainBurst
         if(stats.chainBurst) {
              Sound.play('explode', 2.0);
              let range = 100;
              let burstDmg = stats.dmg * 2;
-             createParticles(e.x, e.y, '#0ff', 10, 3);
+             if(Math.random() < 0.3) createParticles(e.x, e.y, '#0ff', 5, 3); // 軽量化
              enemies.forEach(subE => {
                  if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < range) {
                      damageEnemy(subE, burstDmg);
                  }
              });
-             particles.push({type:'shockwave', x:e.x, y:e.y, size:range, life:10, color:'#0ff'});
         }
 
         if(stats.shrapnel) {
             for(let i=0; i<3; i++) {
                 let ang = Math.random() * Math.PI * 2;
-                bullets.push({
-                    type:'normal', 
-                    x:e.x, y:e.y, 
-                    vx:Math.cos(ang)*(8+Math.random()*4), 
-                    vy:Math.sin(ang)*(8+Math.random()*4), 
-                    size:3, hit:[e.id], pierce:1, isMini:true,
-                    life: 15
-                });
+                bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*8, vy:Math.sin(ang)*8, size:3, hit:[e.id], pierce:1, isMini:true, life:15});
             }
         }
 
@@ -1786,26 +1830,25 @@ function damageEnemy(e, dmg) {
              player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01);
         }
 
-        if(stats.jackpot && Math.random() < 0.05) { // 5%の確率
+        if(stats.jackpot && Math.random() < 0.05) { 
              Sound.play('levelup');
-             for(let k=0; k<10; k++) {
+             for(let k=0; k<5; k++) { // 10個から5個に減量
                  let angle = Math.random() * Math.PI * 2;
-                 let dist = Math.random() * 50;
-                 expOrbs.push({
-                     x: e.x + Math.cos(angle)*dist, 
-                     y: e.y + Math.sin(angle)*dist, 
-                     size: 8, val: 100, color: '#ffd700', pitch: 1.5
-                 });
+                 let dist = Math.random() * 30;
+                 expOrbs.push({x: e.x + Math.cos(angle)*dist, y: e.y + Math.sin(angle)*dist, size: 8, val: 100, color: '#ffd700', pitch: 1.5});
              }
              texts.push({x:e.x, y:e.y, str:"JACKPOT!", life:60, color:'#ffd700'});
         }
 
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
+        
+        // ★軽量化: 死亡時のパーティクルを大幅削減
+        // ボス以外はパーティクルを3個程度に抑える（以前は15個など）
+        if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?30:3, 4);
 
         let levelScaler = 1 + (level * 0.5); 
         if(singularityMode) levelScaler *= 2;
         let baseVal = 25 * levelScaler;
-
         let val = baseVal;
         if(e.type === 'boss') val = baseVal * 50;
         else if(e.ai === 'tank') val = Math.max(300, baseVal * 3);
@@ -1820,16 +1863,10 @@ function damageEnemy(e, dmg) {
         if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
         score += val; updateUI(); 
         
-        // ★ FIX: Always push exp, even if maxed out (handled in update)
         expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
 
-        if(Math.random() < 0.002) {
-             items.push({type: 'magnet', x: e.x, y: e.y});
-        }
-        // ★ Bomb Drop
-        if(Math.random() < 0.0005) {
-             items.push({type: 'bomb', x: e.x, y: e.y});
-        }
+        if(Math.random() < 0.002) items.push({type: 'magnet', x: e.x, y: e.y});
+        if(Math.random() < 0.0005) items.push({type: 'bomb', x: e.x, y: e.y});
     }
 }
 
