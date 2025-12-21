@@ -1899,7 +1899,14 @@ function showUpgrade() {
     let pool = [];
 
     // Basic Stats (Fixed)
-    pool.push(createOpt('dmg', '💪', '攻撃力', 15, '', (v)=>stats.dmg+=v, (v)=>`ダメージ +${v}`));
+    pool.push(createOpt('dmg_p', '💪', '攻撃倍率', 15, '%', (v)=> {
+        // 増加量を計算
+        let increase = Math.floor(stats.dmg * (v / 100));
+        // 最低でも「7」は上がるようにする（固定値強化の半分くらいが目安）
+        let minVal = 7; 
+        
+        stats.dmg += Math.max(increase, minVal);
+    }, (v)=>`ダメージ +${v}%`));
     pool.push(createOpt('hp', '❤️', 'HP強化', 50, '', (v)=>{player.maxHp+=v; player.hp+=v;}, (v)=>`最大HP +${v}`));
     pool.push(createOpt('spd', '👟', '移動速度', 2, '', (v)=>stats.spd+=v, (v)=>`移動速度 +${v}`));
     pool.push(createOpt('rate', '⚡', '連射速度', 3, '', (v)=>stats.rate=Math.max(2, stats.rate-v), (v)=>`連射/CD短縮`)); // Fixed behavior
