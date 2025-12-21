@@ -1704,7 +1704,14 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
-        nextExp = Math.floor(nextExp * 1.05) + 200; 
+        if (level < 45) {
+            // Lv50までは今まで通り（ハイペース）
+            nextExp = Math.floor(nextExp * 1.15) + 500;
+        } else {
+            // Lv50以降は伸びを緩やかにする（15%増 → 2%増にダウン）
+            // これでLv50以降も、今までよりずっと早くレベルが上がります
+            nextExp = Math.floor(nextExp * 1.02) + 1000;
+        }
         Sound.play('levelup'); updateUI(); 
         
         if(level === 5) showEvo(); 
