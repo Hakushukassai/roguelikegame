@@ -360,59 +360,105 @@ const keys = {};
 window.addEventListener('keydown', e => { keys[e.key] = true; if(e.code === 'Space') dash(); });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-document.getElementById('dash-btn').addEventListener('touchstart', (e) => { e.preventDefault(); dash(); }, {passive: false});
+// ダッシュボタンの処理
+const dashBtn = document.getElementById('dash-btn');
+// エラー防止: dashBtnが存在する場合のみイベント登録
+if(dashBtn) {
+    dashBtn.addEventListener('touchstart', (e) => { 
+        e.preventDefault(); 
+        dash(); 
+    }, {passive: false});
+}
 
-window.addEventListener('touchstart', e => {
+// ジョイスティック処理（修正版）
+const handleTouchStart = (e) => {
+    // ボタン以外を触った時は、画面スクロール等を防ぐ
+    if(e.target.id !== 'dash-btn' && e.target.tagName !== 'BUTTON') {
+        if(e.cancelable) e.preventDefault();
+    }
+
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
+        
+        // 画面左半分を触ったらジョイスティック開始
         if(t.clientX < window.innerWidth / 2 && joyTouchId === null) {
             joyTouchId = t.identifier;
             joyStartX = t.clientX;
             joyStartY = t.clientY;
+            
             let zone = document.getElementById('joystick-zone');
             zone.style.display = 'block';
             zone.style.left = joyStartX + 'px';
             zone.style.top = joyStartY + 'px';
+            
+            let knob = document.getElementById('joystick-knob');
+            knob.style.transform = `translate(-50%, -50%)`;
+            
             updateJoystick(t.clientX, t.clientY);
         }
     }
-}, {passive: false});
+};
 
-window.addEventListener('touchmove', e => {
-    e.preventDefault(); 
+const handleTouchMove = (e) => {
+    if(e.cancelable) e.preventDefault();
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
         if(t.identifier === joyTouchId) {
             updateJoystick(t.clientX, t.clientY);
         }
     }
-}, {passive: false});
+};
 
-window.addEventListener('touchend', e => {
+const handleTouchEnd = (e) => {
+    if(e.cancelable) e.preventDefault();
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
         if(t.identifier === joyTouchId) {
-            joyTouchId = null;
-            joyMoveX = 0; joyMoveY = 0;
-            document.getElementById('joystick-zone').style.display = 'none';
-            document.getElementById('joystick-knob').style.transform = `translate(-50%, -50%)`;
+            resetJoystick();
         }
     }
-});
+};
+
+const handleTouchCancel = (e) => {
+    if(e.cancelable) e.preventDefault();
+    for(let i=0; i<e.changedTouches.length; i++) {
+        let t = e.changedTouches[i];
+        if(t.identifier === joyTouchId) {
+            resetJoystick();
+        }
+    }
+};
+
+function resetJoystick() {
+    joyTouchId = null;
+    joyMoveX = 0; joyMoveY = 0;
+    let zone = document.getElementById('joystick-zone');
+    if(zone) zone.style.display = 'none';
+    let knob = document.getElementById('joystick-knob');
+    if(knob) knob.style.transform = `translate(-50%, -50%)`;
+}
+
+window.addEventListener('touchstart', handleTouchStart, {passive: false});
+window.addEventListener('touchmove', handleTouchMove, {passive: false});
+window.addEventListener('touchend', handleTouchEnd, {passive: false});
+window.addEventListener('touchcancel', handleTouchCancel, {passive: false});
 
 function updateJoystick(cx, cy) {
     let dx = cx - joyStartX;
     let dy = cy - joyStartY;
     let dist = Math.hypot(dx, dy);
+    
     if(dist > JOY_MAX_RADIUS) {
-        dx = (dx / dist) * JOY_MAX_RADIUS;
-        dy = (dy / dist) * JOY_MAX_RADIUS;
+        let ratio = JOY_MAX_RADIUS / dist;
+        dx *= ratio;
+        dy *= ratio;
     }
+    
     joyMoveX = dx / JOY_MAX_RADIUS;
     joyMoveY = dy / JOY_MAX_RADIUS;
     
     let knob = document.getElementById('joystick-knob');
-    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    if(knob) knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 }
 
 
