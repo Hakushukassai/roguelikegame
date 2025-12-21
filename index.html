@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.2.1: BUG FIXD</title>
+    <title>Evo Lite v5.2.2: newClass FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -535,10 +535,17 @@ function update(ts) {
 
     if(stats.absoluteZero) {
         enemies.forEach(e => {
-            if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 250) {
-                e.frozen = 5; 
+            // 範囲を 250 → 180 に少し縮小（近づかないと効果が出ないように）
+            if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 200) {
+                // 【変更点】
+                // 毎回 e.frozen=5 にすると完全停止するため、
+                // 「50%の確率で一瞬止める」ことで、カクカク動きながら近づいてくる「減速」効果にします。
+                if(Math.random() < 0.5) {
+                    e.frozen = 2; 
+                }
             }
         });
+        // パーティクル演出はそのまま
         if(Math.random() < 0.2*ts && particles.length < MAX_PARTICLES) createParticles(player.x + (Math.random()-0.5)*500, player.y + (Math.random()-0.5)*500, '#88ffff', 1, 1);
     }
     if(stats.earthquake) {
