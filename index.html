@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.3.2: FIXD</title>
+    <title>Evo Lite v5.4: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -117,7 +117,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.2 Samurai & Tempest</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.4 Samurai & Tempest</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -740,26 +740,46 @@ function update(ts) {
     }
 
     if(stats.poison > 0 && Math.random() < (1/30)*ts) {
-        // ターゲット（一番近い敵）を探す
+        // 1. 毒を出す場所を決める（一番近い敵を狙う）
         let target = null;
-        let minD = 500; // 射程500以内
+        let minD = 500; 
         enemies.forEach(e => {
             if(e.dead) return;
             let d = Math.hypot(e.x - player.x, e.y - player.y);
             if(d < minD) { minD = d; target = e; }
         });
-
-        // 敵がいればその場所へ、いなければ自分の場所に毒を置く
         let spawnX = target ? target.x : player.x;
         let spawnY = target ? target.y : player.y;
 
-        // 敵の場所へ毒ガス発生
         gasClouds.push({ 
             x: spawnX, y: spawnY, 
             r: 30 + (stats.poison * 10), 
             life: 180 + (stats.poison * 30), 
-            dmg: stats.dmg * (0.2 + stats.poison * 0.1) 
+            dmg: stats.dmg * (0.2 + stats.poison * 0.1),
+            tick: 0 // ダメージ間隔管理用
         });
+    }
+
+    // 2. 毒のダメージ処理（確率ではなく一定時間ごとに確定ヒットさせる）
+    for(let i=gasClouds.length-1; i>=0; i--) {
+        let g = gasClouds[i]; 
+        g.life -= ts;
+        
+        if(typeof g.tick === 'undefined') g.tick = 0;
+        g.tick -= ts;
+        
+        // 約0.25秒(15フレーム)ごとに判定
+        if(g.tick <= 0) {
+            g.tick = 15; 
+            enemies.forEach(e => { 
+                if(!e.dead && Math.hypot(e.x - g.x, e.y - g.y) < g.r + e.size) {
+                    damageEnemy(e, g.dmg);
+                    if(Math.random() < 0.3) createParticles(e.x, e.y, '#aa00ff', 1, 2);
+                } 
+            }); 
+        }
+        
+        if(g.life <= 0) gasClouds.splice(i, 1);
     }
 
     if(stats.spinBlade > 0) {
