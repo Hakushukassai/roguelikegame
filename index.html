@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.4: FIXD</title>
+    <title>Evo Lite v5.5: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -813,10 +813,13 @@ function update(ts) {
         });
     }
 
+    // --- 検索用: if(stats.aura) ---
     if(stats.aura) {
         let r = stats.auraRange * stats.auraScale;
         let auraRate = 0.1;
         if(player.class === 'Melee' && stats.homing > 0) auraRate += (stats.homing * 0.05);
+        
+        // ★ SunCrusherの処理（そのまま）
         if(player.subClass === 'SunCrusher') {
             if(player.isMoving) {
                 if(player.sunCharge > 0) {
@@ -831,14 +834,27 @@ function update(ts) {
                 if(Math.random()<0.1) createParticles(player.x, player.y, '#fa0', 1, 1);
             }
         }
+
         enemies.forEach(e => { 
             if(e.dead) return;
             let dist = Math.hypot(e.x-player.x, e.y-player.y);
             if(dist < r + e.size) {
                 if(Math.random() < auraRate * ts) {
+                    // ★【変更点】ここから火力を強化
                     let d = stats.dmg;
+                    
+                    // ヴァンガード/ガーディアン系なら「最大HP」と「防御力」を火力に変換！
+                    if(player.class === 'Melee' || player.class === 'Guardian') {
+                        let hpBonus = player.maxHp * 0.05; // 最大HPの5%を加算
+                        let armorBonus = stats.armor * 10; // 防御力の10倍を加算
+                        d += hpBonus + armorBonus;
+                    }
+
                     if(player.subClass === 'SunCrusher' && player.isMoving) d *= (1 + player.sunCharge/20);
+                    
                     damageEnemy(e, d);
+                    // ★【変更点】ここまで
+
                     if(player.class === 'Melee' && stats.lightning > 0 && Math.random() < 0.3) {
                         triggerLightning(e, stats.lightning);
                     }
@@ -1180,28 +1196,40 @@ function update(ts) {
                     damageEnemy(e, stats.dmg * 0.5);
                     if(particles.length < MAX_PARTICLES) createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2);
                 }
+                
+                // ★【変更点】反射ダメージを超強化
                 if(stats.spikeReflect) { 
-                    damageEnemy(e, e.dmg * 2.0);
+                    // 敵の攻撃力の2倍 + 防御力の50倍 を返す
+                    let reflectDmg = (e.dmg * 2.0) + (stats.armor * 50);
+                    damageEnemy(e, reflectDmg);
                     Sound.play('hit');
                     if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#0f0', 3, 2);
                 }
+
                 if(stats.isEarthShaker) {
                     damageEnemy(e, stats.dmg * 2); 
                     Sound.play('bash');
                     let kickAng = Math.atan2(e.y - player.y, e.x - player.x);
                     e.x += Math.cos(kickAng) * 30; e.y += Math.sin(kickAng) * 30;
                 }
+                
                 if(player.class === 'Melee' && player.slamCd <= 0) {
                     let cd = Math.max(10, 60 - stats.rate);
                     player.slamCd = cd; 
-                    damageEnemy(e, stats.dmg * 2 * (player.size/15)); 
+
+                    // ★【変更点】体当たりに最大HP依存ダメージを追加 (MaxHPの20%)
+                    let slamBonus = player.maxHp * 0.2; 
+                    damageEnemy(e, (stats.dmg * 2) + slamBonus); 
+
                     let waveSize = 15 + (stats.pierce * 5); 
                     Sound.play('bash');
                     if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 5, 2);
                     particles.push({type:'shockwave', x:player.x, y:player.y, size:waveSize, life:10, color:'#f00'});
+                    
+                    // 衝撃波のダメージにもHPボーナスを少し乗せる
                     enemies.forEach(subE => {
                         if(!subE.dead && Math.hypot(subE.x - player.x, subE.y - player.y) < waveSize * 3) {
-                            damageEnemy(subE, stats.dmg * 0.5);
+                            damageEnemy(subE, (stats.dmg * 0.5) + (slamBonus * 0.5));
                         }
                     });
                 } else {
