@@ -927,6 +927,11 @@ function update(ts) {
                 } else {
                     let finalDmg = stats.dmg * (b.damageMult || 1);
                     damageEnemy(e, finalDmg);
+
+                    if(stats.coldFlask && Math.random() < 0.1) {
+                        e.frozen = 60; // 1秒凍結
+                        createParticles(e.x, e.y, '#0ff', 5, 2);
+                    }
                     
                     if(stats.knockback > 0 && !b.isMini) {
                         let ang = Math.atan2(e.y - player.y, e.x - player.x);
@@ -1864,6 +1869,15 @@ function showMilestone() {
             {t:"💣 クラスターマイン", d:"ダッシュ時に大量の地雷をばら撒く。", f:()=>{stats.clusterMine=true;}},
             {t:"🛡️ フォースフィールド", d:"定期的にダメージを完全無効化するバリアを展開。", f:()=>{stats.forceField=true;}}
         ];
+    } else if(player.class === 'Alchemist') {
+        pool = [
+            {t:"☣️ パンデミック", d:"毒を受けた敵が死ぬと、その場に毒ガスを発生させる。", f:()=>{stats.pandemic=true;}},
+            {t:"🧪 神経毒", d:"毒ガスの範囲内にいる敵の移動速度を大幅に下げる。", f:()=>{stats.neurotoxin=true;}},
+            {t:"🧊 コールドフラスコ", d:"攻撃時、10%の確率で敵を凍結させる。", f:()=>{stats.coldFlask=true;}},
+            {t:"🤢 腐食液", d:"毒ガスのダメージ間隔が半分になり、火力が倍増する。", f:()=>{stats.corrosion=true;}},
+            {t:"💊 違法な興奮剤", d:"移動速度+20、連射速度+20%。ただし被ダメージが1.5倍になる。", f:()=>{stats.spd+=20; stats.rate-=5; stats.armor-=5;}},
+            {t:"🌧️ アシッドレイン", d:"3秒ごとにランダムな場所に強力な酸の雨（毒沼）を降らせる。", f:()=>{stats.acidRain=true;}}
+        ];        
     }
 
     pool.sort(() => Math.random() - 0.5);
@@ -2024,7 +2038,18 @@ function showEvo() {
             stats.sentryMax=6; // 8個置ける
             stats.sentrySystem=true; spawnSentry();
             stats.spikeReflect=true; // 反射ダメージ
-        }}
+        }},
+        {t:"⚗️ アルケミスト", d:"毒物劇物: 毒ガス・凍結・弱体化をバラ撒く", f:()=>{
+            player.class="Alchemist"; player.color="#aa00ff"; // 紫色
+            stats.poison = 5; // 最初から毒レベルが高い
+            stats.dmg *= 0.7; // 直接攻撃力は低い
+            stats.rate *= 0.9; // 攻撃速度は少し速い
+            
+            // アルケミスト専用フラグ（後でロジックに使います）
+            stats.alchemistMode = true; 
+            stats.neurotoxin = false; // 神経毒（スロー効果）
+            stats.pandemic = false;   // パンデミック（敵死亡時に毒拡散）
+        }},
     ];
 
     evos.forEach(o => {
