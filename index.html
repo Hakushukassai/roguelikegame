@@ -2335,7 +2335,6 @@ function showUpgrade() {
     pool.push(createOpt('hp', '❤️', '最大HP', 50, '', (v)=>{player.maxHp+=v; player.hp+=v;}, (v)=>`HP +${v}`));
     pool.push(createOpt('spd', '👟', '移動速度', 2, '', (v)=>stats.spd+=v, (v)=>`速度 +${v}`));
     pool.push(createOpt('crit', '🎯', 'クリティカル', 5, '%', (v)=>stats.critChance+=v/100, (v)=>`会心率 +${v}%`));
-    pool.push(createOpt('dodge', '💨', '回避率', 5, '%', (v)=>stats.dodge=Math.min(0.6, stats.dodge+v/100), (v)=>`回避 +${v}% (Max60)`));
     pool.push(createOpt('magnet', '🧲', '収集範囲', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
     
     // レア枠：超回復
@@ -2346,54 +2345,62 @@ function showUpgrade() {
     }
 
     // =========================================
-    // 2. クラス別出し分け (Class Specific)
+    // 2. クラス別出し分け & 重要ステータス
     // =========================================
     
-    // ★「近接系」＆「侍」＆「アルケミスト」は『弾速』が不要（あるいは効果薄）
-    // ※侍は弾速で斬撃速度が変わるが、重要度は低いので除外、または「斬撃速度」として出すか判断
+    // ★【修正】攻撃範囲 (Area): ヴァンガード(Melee)等は出やすくする
+    let areaWeight = 1;
+    if(player.class === 'Melee' || player.class === 'Guardian' || player.class === 'Alchemist') areaWeight = 3; // 3倍出やすく
+    
+    for(let i=0; i<areaWeight; i++) {
+        pool.push(createOpt('area', '💥', '攻撃範囲', 10, '%', (v)=>{
+            stats.areaScale += v/100;
+            if(player.class === 'Melee') player.size *= 1.05; 
+        }, (v)=>`サイズ +${v}%`));
+    }
+
+    // ★【修正】ライトニング (Lightning): リストに追加！
+    // ヴァンガード(Melee)とテンペスト(Tempest)は必ず候補に入るように
+    if(player.class === 'Melee' || player.class === 'Tempest' || stats.lightning > 0 || Math.random() < 0.3) {
+        pool.push(createOpt('lightning', '🌩️', '雷撃強化', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
+    }
+
+    // 弾速 (Melee/Samurai/Alchemist以外)
     if(player.class !== 'Melee' && player.class !== 'Samurai' && player.class !== 'Alchemist') {
         pool.push(createOpt('bullet_speed', '🚅', '弾速', 10, '%', (v)=>stats.bulletSpeed*=(1+v/100), (v)=>`弾の速さ +${v}%`));
     }
 
-    // ★「貫通」が必要なクラス (スナイパー、アサルト、トリックスター)
-    // 侍(無限貫通)、Melee(範囲攻撃)、アルケミ(毒)、ガーディアン(設置)には不要
+    // 貫通 (Sniper/Assault/Trickster/Tempest)
     if(['Sniper', 'Assault', 'Trickster', 'Tempest'].includes(player.class)) {
         pool.push(createOpt('pierce', '🏹', '貫通力', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
     }
 
-    // ★「攻撃範囲(Area)」 (全クラス有効だが、特にMelee/侍/アルケミ/ガーディアンに重要)
-    pool.push(createOpt('area', '💥', '攻撃範囲', 10, '%', (v)=>{
-        stats.areaScale += v/100;
-        // 既存の回転刃や毒などにも適用されるように変数を共用する設計にする
-        if(player.class === 'Melee') player.size *= 1.05; // Meleeは本体サイズも少し大きく
-    }, (v)=>`サイズ +${v}%`));
-
-    // ★「連射速度(Rate)」 (全クラス有効)
+    // 連射速度 (Rate)
     pool.push(createOpt('rate', '⚡', 'クールダウン', 5, '%', (v)=>stats.rate=Math.max(2, stats.rate*(1-v/100)), (v)=>`攻撃間隔 -${v}%`));
 
-    // ★「持続時間(Duration)」 (アルケミスト、ガーディアン、設置系スキル持ち用)
+    // 持続時間 (Alchemist/Guardian/毒/設置系)
     if(player.class === 'Alchemist' || player.class === 'Guardian' || stats.clusterMine || stats.poison > 0) {
         pool.push(createOpt('duration', '⏳', '効果時間', 15, '%', (v)=>stats.duration+=v/100, (v)=>`持続時間 +${v}%`));
     }
 
-    // ★「防御力(Armor)」 (近接系やタンク系に優先)
+    // 防御力 (Melee/Samurai/Guardian)
     if(['Melee', 'Samurai', 'Guardian'].includes(player.class)) {
+        // ヴァンガードにとって重要なので2つ分入れて確率アップ
+        pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
         pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
     }
     
-    // ★「ノックバック」 (近接やスナイパーで重要)
+    // ノックバック (Melee/Sniper/Assault)
     if(['Melee', 'Sniper', 'Assault'].includes(player.class)) {
         pool.push(createOpt('knockback', '🥊', '衝撃力', 1, '', (v)=>stats.knockback+=v, (v)=>`ノックバック +${v}`));
     }
 
-    // ★「マルチショット」 (射撃クラス用) vs 「回転刃追加」 (Melee用)
+    // マルチショット系
     if(player.class === 'Melee') {
         pool.push(createOpt('multi', '⚔️', '回転刃+', 1, '', (v)=>stats.multi+=v, (v)=>`回転刃の数 +${v}`));
     } else if(player.class === 'Samurai') {
-        // 侍はマルチショットで「衝撃波」が増える仕様にしたのでOK
         pool.push(createOpt('multi', '🌊', '衝撃波+', 1, '', (v)=>stats.multi+=v, (v)=>`衝撃波の数 +${v}`));
     } else {
-        // 通常の射撃クラス
         pool.push(createOpt('multi', '🔫', 'マルチショット', 1, '', (v)=>stats.multi+=v, (v)=>`同時発射数 +${v}`));
     }
 
@@ -2402,23 +2409,29 @@ function showUpgrade() {
     // =========================================
     let choices = [];
     let safety = 0;
+    
+    // プールをシャッフル
+    pool.sort(() => Math.random() - 0.5);
+
     while(choices.length < 3 && safety < 100) {
-        let base = pool[Math.floor(Math.random() * pool.length)];
-        // 重複チェック
-        if(choices.some(c => c.id === base.id)) { safety++; continue; }
+        // プールからランダムに取り出す
+        let base = pool[safety % pool.length]; 
         
-        // オブジェクトをコピー
-        let opt = { ...base }; 
+        // IDが重複していないかチェック (armorなどを複数入れたのでID重複チェックは重要)
+        if(!choices.some(c => c.id === base.id)) {
+            // オブジェクトをコピー
+            let opt = { ...base }; 
 
-        // ★たまに「レア(強効果)」になる
-        if(Math.random() < 0.1) {
-            opt.isRare = true;
-            let mult = 2; 
-            if(opt.id === 'hp') mult = 3; 
-            opt.val = Math.floor(opt.val * mult);
+            // たまにレア化
+            if(Math.random() < 0.1) {
+                opt.isRare = true;
+                let mult = 2; 
+                if(opt.id === 'hp') mult = 3; 
+                opt.val = Math.floor(opt.val * mult);
+            }
+            choices.push(opt);
         }
-
-        choices.push(opt);
+        safety++;
     }
 
     // カード生成
