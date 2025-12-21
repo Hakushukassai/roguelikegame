@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.5: FIXD</title>
+    <title>Evo Lite v5.6: FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -2338,7 +2338,7 @@ function showUpgrade() {
     pool.push(createOpt('magnet', '🧲', '収集範囲', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
     
     // 全クラス共通：雷撃
-    pool.push(createOpt('lightning', '🌩️', 'ライトニング', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
+    pool.push(createOpt('lightning', '🌩️', '雷撃強化', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
 
     // レア枠：超回復
     if(Math.random() < 0.2) {
@@ -2348,16 +2348,30 @@ function showUpgrade() {
     }
 
     // =========================================
-    // 2. クラス別出し分け & 重要ステータス
+    // 2. クラス固有ウェポン (Class Weapons) ★復活！
     // =========================================
-    
-    // ★【追加】ビット増設 (スナイパー専用、または既にビット所持時)
+
+    // ★ ビット増設 (スナイパー or 所持時)
     if(player.class === 'Sniper' || stats.drones > 0) {
-        // 出現しやすくするため2つ登録
         pool.push(createOpt('drone', '🛰️', 'ビット増設', 1, '機', (v)=>stats.drones+=v, (v)=>`ビット数 +${v}`));
         pool.push(createOpt('drone', '🛰️', 'ビット増設', 1, '機', (v)=>stats.drones+=v, (v)=>`ビット数 +${v}`));
     }
 
+    // ★ ミサイル強化 (アサルト or 所持時)
+    if(player.class === 'Assault' || stats.missile > 0) {
+        pool.push(createOpt('missile', '🚀', 'ミサイル', 1, 'Lv', (v)=>stats.missile+=v, (v)=>`発射数/頻度 +${v}`));
+        pool.push(createOpt('missile', '🚀', 'ミサイル', 1, 'Lv', (v)=>stats.missile+=v, (v)=>`発射数/頻度 +${v}`));
+    }
+
+    // ★ チャクラム強化 (トリックスター or 所持時)
+    if(player.class === 'Trickster' || stats.chakram > 0) {
+        pool.push(createOpt('chakram', '🥏', 'チャクラム', 1, '個', (v)=>stats.chakram+=v, (v)=>`同時投擲数 +${v}`));
+    }
+
+    // =========================================
+    // 3. クラス別ステータス重み付け
+    // =========================================
+    
     // 攻撃範囲 (Area)
     let areaWeight = 1;
     if(player.class === 'Melee' || player.class === 'Guardian' || player.class === 'Alchemist') areaWeight = 3; 
@@ -2368,12 +2382,12 @@ function showUpgrade() {
         }, (v)=>`サイズ +${v}%`));
     }
 
-    // 弾速
+    // 弾速 (Melee/Samurai/Alchemist以外)
     if(player.class !== 'Melee' && player.class !== 'Samurai' && player.class !== 'Alchemist') {
         pool.push(createOpt('bullet_speed', '🚅', '弾速', 10, '%', (v)=>stats.bulletSpeed*=(1+v/100), (v)=>`弾の速さ +${v}%`));
     }
 
-    // 貫通
+    // 貫通 (Sniper/Assault/Trickster/Tempest)
     if(['Sniper', 'Assault', 'Trickster', 'Tempest'].includes(player.class)) {
         pool.push(createOpt('pierce', '🏹', '貫通力', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
     }
@@ -2397,7 +2411,7 @@ function showUpgrade() {
         pool.push(createOpt('knockback', '🥊', '衝撃力', 1, '', (v)=>stats.knockback+=v, (v)=>`ノックバック +${v}`));
     }
 
-    // マルチショット系
+    // マルチショット系 (クラスによって呼び名と効果が変わる)
     if(player.class === 'Melee') {
         pool.push(createOpt('multi', '⚔️', '回転刃+', 1, '', (v)=>stats.multi+=v, (v)=>`回転刃の数 +${v}`));
     } else if(player.class === 'Samurai') {
@@ -2407,7 +2421,7 @@ function showUpgrade() {
     }
 
     // =========================================
-    // 3. 抽選ロジック
+    // 4. 抽選ロジック
     // =========================================
     let choices = [];
     let safety = 0;
