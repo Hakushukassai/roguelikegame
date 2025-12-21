@@ -2337,8 +2337,8 @@ function showUpgrade() {
     pool.push(createOpt('crit', '🎯', 'クリティカル', 5, '%', (v)=>stats.critChance+=v/100, (v)=>`会心率 +${v}%`));
     pool.push(createOpt('magnet', '🧲', '収集範囲', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
     
-    // ★【修正】ここに追加しました（全クラス共通化）
-    pool.push(createOpt('lightning', '🌩️', '雷撃強化', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
+    // 全クラス共通：雷撃
+    pool.push(createOpt('lightning', '🌩️', 'ライトニング', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
 
     // レア枠：超回復
     if(Math.random() < 0.2) {
@@ -2351,10 +2351,16 @@ function showUpgrade() {
     // 2. クラス別出し分け & 重要ステータス
     // =========================================
     
-    // 攻撃範囲 (Area): ヴァンガード(Melee)等は出やすくする
+    // ★【追加】ビット増設 (スナイパー専用、または既にビット所持時)
+    if(player.class === 'Sniper' || stats.drones > 0) {
+        // 出現しやすくするため2つ登録
+        pool.push(createOpt('drone', '🛰️', 'ビット増設', 1, '機', (v)=>stats.drones+=v, (v)=>`ビット数 +${v}`));
+        pool.push(createOpt('drone', '🛰️', 'ビット増設', 1, '機', (v)=>stats.drones+=v, (v)=>`ビット数 +${v}`));
+    }
+
+    // 攻撃範囲 (Area)
     let areaWeight = 1;
     if(player.class === 'Melee' || player.class === 'Guardian' || player.class === 'Alchemist') areaWeight = 3; 
-    
     for(let i=0; i<areaWeight; i++) {
         pool.push(createOpt('area', '💥', '攻撃範囲', 10, '%', (v)=>{
             stats.areaScale += v/100;
@@ -2362,32 +2368,31 @@ function showUpgrade() {
         }, (v)=>`サイズ +${v}%`));
     }
 
-    // 弾速 (Melee/Samurai/Alchemist以外)
+    // 弾速
     if(player.class !== 'Melee' && player.class !== 'Samurai' && player.class !== 'Alchemist') {
         pool.push(createOpt('bullet_speed', '🚅', '弾速', 10, '%', (v)=>stats.bulletSpeed*=(1+v/100), (v)=>`弾の速さ +${v}%`));
     }
 
-    // 貫通 (Sniper/Assault/Trickster/Tempest)
+    // 貫通
     if(['Sniper', 'Assault', 'Trickster', 'Tempest'].includes(player.class)) {
         pool.push(createOpt('pierce', '🏹', '貫通力', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
     }
 
-    // 連射速度 (Rate)
+    // 連射速度
     pool.push(createOpt('rate', '⚡', 'クールダウン', 5, '%', (v)=>stats.rate=Math.max(2, stats.rate*(1-v/100)), (v)=>`攻撃間隔 -${v}%`));
 
-    // 持続時間 (Alchemist/Guardian/毒/設置系)
+    // 持続時間
     if(player.class === 'Alchemist' || player.class === 'Guardian' || stats.clusterMine || stats.poison > 0) {
         pool.push(createOpt('duration', '⏳', '効果時間', 15, '%', (v)=>stats.duration+=v/100, (v)=>`持続時間 +${v}%`));
     }
 
-    // 防御力 (Melee/Samurai/Guardian)
+    // 防御力
     if(['Melee', 'Samurai', 'Guardian'].includes(player.class)) {
-        // ヴァンガードにとって重要なので2つ分入れて確率アップ
         pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
         pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
     }
     
-    // ノックバック (Melee/Sniper/Assault)
+    // ノックバック
     if(['Melee', 'Sniper', 'Assault'].includes(player.class)) {
         pool.push(createOpt('knockback', '🥊', '衝撃力', 1, '', (v)=>stats.knockback+=v, (v)=>`ノックバック +${v}`));
     }
@@ -2407,19 +2412,13 @@ function showUpgrade() {
     let choices = [];
     let safety = 0;
     
-    // プールをシャッフル
     pool.sort(() => Math.random() - 0.5);
 
     while(choices.length < 3 && safety < 100) {
-        // プールからランダムに取り出す
         let base = pool[safety % pool.length]; 
         
-        // IDが重複していないかチェック (armorなどを複数入れたのでID重複チェックは重要)
         if(!choices.some(c => c.id === base.id)) {
-            // オブジェクトをコピー
             let opt = { ...base }; 
-
-            // たまにレア化
             if(Math.random() < 0.1) {
                 opt.isRare = true;
                 let mult = 2; 
@@ -2431,7 +2430,6 @@ function showUpgrade() {
         safety++;
     }
 
-    // カード生成
     choices.forEach(o => {
         let el = document.createElement('div'); 
         el.className = 'card';
