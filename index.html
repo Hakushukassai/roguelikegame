@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5: newClass FIXD</title>
+    <title>Evo Lite v5.1: newClass FIXD</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -117,7 +117,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v3.5 Samurai & Tempest</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.1 Samurai & Tempest</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -1207,29 +1207,33 @@ function shoot() {
         enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-player.x, e.y-player.y); if(d<minD){minD=d; target=e;} });
         
         let angle = target ? Math.atan2(target.y-player.y, target.x-player.x) : (player.isMoving ? Math.atan2(joyMoveY||0, joyMoveX||1) : -Math.PI/2);
-        if(!target && !player.isMoving && joyTouchId === null) angle = -Math.PI/2; // デフォルト上向き
+        if(!target && !player.isMoving && joyTouchId === null) angle = -Math.PI/2; 
 
-        // 斬撃を生成 (弾速0, 巨大な判定, 短い寿命)
-        Sound.play('missile', 2.0); // 高音でキレのある音
+        // ★修正ポイント: 固定値15 ではなく stats.bulletSpeed を参照するように変更
+        // これにより「弾速」を上げると、斬撃がより遠くまで（速く）届くようになります
+        let slashSpeed = stats.bulletSpeed * 0.9; 
+
+        Sound.play('missile', 2.0); 
         bullets.push({
             type: 'slash', x: player.x, y: player.y, 
-            vx: Math.cos(angle)*15, vy: Math.sin(angle)*15, // 少しだけ前に進む
+            vx: Math.cos(angle) * slashSpeed, vy: Math.sin(angle) * slashSpeed, // ここを変更
             angle: angle,
-            size: 150, // 巨大な判定
-            life: 15,  // 一瞬で消える
+            size: 150, 
+            life: 15,  
             color: '#fff', hit: [], pierce: 999,
             damageMult: 1.0
         });
         
-        // 追加効果: 抜刀の衝撃波（遠距離用）
+        // 追加効果: 抜刀の衝撃波
         if(stats.swordWave || stats.multi > 1) {
              let waveCount = stats.multi;
              for(let i=0; i<waveCount; i++) {
                  let waveAng = angle + (Math.random()-0.5)*0.5;
-                 bullets.push({type:'normal', x:player.x, y:player.y, vx:Math.cos(waveAng)*20, vy:Math.sin(waveAng)*20, size:5, color:'#adf', pierce:5, life:40});
+                 // 衝撃波も弾速の影響を受ける
+                 bullets.push({type:'normal', x:player.x, y:player.y, vx:Math.cos(waveAng)*stats.bulletSpeed*1.2, vy:Math.sin(waveAng)*stats.bulletSpeed*1.2, size:5, color:'#adf', pierce:5, life:40});
              }
         }
-        return; // 通常弾処理はしない
+        return; 
     }
     // ----------------------------
 
@@ -1271,7 +1275,6 @@ function shoot() {
         let bSize = stats.railgun ? 10 : 5;
         let bDmgMult = 1.0;
 
-        // 雷帝モードの弾
         if(stats.tempestMode) {
              bColor = '#d0f'; bSize = 6;
         }
