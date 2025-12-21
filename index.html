@@ -355,6 +355,7 @@ let spikeBits = [];
 // Flying Swords
 let flyingSwords = [];
 
+// --- Input Handling (PC & Mobile Improved) ---
 const keys = {};
 
 window.addEventListener('keydown', e => { keys[e.key] = true; if(e.code === 'Space') dash(); });
@@ -362,7 +363,6 @@ window.addEventListener('keyup', e => keys[e.key] = false);
 
 // ダッシュボタンの処理
 const dashBtn = document.getElementById('dash-btn');
-// エラー防止: dashBtnが存在する場合のみイベント登録
 if(dashBtn) {
     dashBtn.addEventListener('touchstart', (e) => { 
         e.preventDefault(); 
@@ -370,10 +370,16 @@ if(dashBtn) {
     }, {passive: false});
 }
 
-// ジョイスティック処理（修正版）
+// ヘルパー：タッチした場所がボタンやカードかどうか判定
+function isInteractive(target) {
+    // ボタン、またはカード（レベルアップ選択肢）の上なら true
+    return target.tagName === 'BUTTON' || target.closest('.card') || target.id === 'dash-btn';
+}
+
+// ジョイスティック処理（修正版 v2）
 const handleTouchStart = (e) => {
-    // ボタン以外を触った時は、画面スクロール等を防ぐ
-    if(e.target.id !== 'dash-btn' && e.target.tagName !== 'BUTTON') {
+    // ボタンやカードを触った時は preventDefault しない（クリックできるようにする）
+    if(!isInteractive(e.target)) {
         if(e.cancelable) e.preventDefault();
     }
 
@@ -381,7 +387,8 @@ const handleTouchStart = (e) => {
         let t = e.changedTouches[i];
         
         // 画面左半分を触ったらジョイスティック開始
-        if(t.clientX < window.innerWidth / 2 && joyTouchId === null) {
+        // ただしスタート画面などが表示されている時はジョイスティックを反応させない
+        if(gameActive && t.clientX < window.innerWidth / 2 && joyTouchId === null) {
             joyTouchId = t.identifier;
             joyStartX = t.clientX;
             joyStartY = t.clientY;
@@ -400,7 +407,9 @@ const handleTouchStart = (e) => {
 };
 
 const handleTouchMove = (e) => {
+    // 移動中は基本preventDefaultしたいが、ボタン上なら許可（スクロールは防ぎたいので条件分岐）
     if(e.cancelable) e.preventDefault();
+    
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
         if(t.identifier === joyTouchId) {
@@ -410,7 +419,11 @@ const handleTouchMove = (e) => {
 };
 
 const handleTouchEnd = (e) => {
-    if(e.cancelable) e.preventDefault();
+    // ★ここが修正点：ボタンの上で指を離した時は preventDefault しない！
+    if(!isInteractive(e.target)) {
+        if(e.cancelable) e.preventDefault();
+    }
+    
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
         if(t.identifier === joyTouchId) {
