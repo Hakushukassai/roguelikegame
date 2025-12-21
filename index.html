@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.5: FIXD</title>
+    <title>Evo Lite v5.5</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -131,7 +131,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.4 Samurai & Tempest</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v5.5</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -2345,6 +2345,7 @@ function showUpgrade() {
     m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "LEVEL UP!";
 
+    // アップグレード生成用ヘルパー
     const createOpt = (id, icon, title, val, unit, applyFunc, descGen) => {
         return { id: id, icon: icon, title: title, val: val, unit: unit, func: applyFunc, desc: descGen };
     };
@@ -2389,9 +2390,11 @@ function showUpgrade() {
         pool.push(createOpt('chakram', '🥏', 'チャクラム', 1, '個', (v)=>stats.chakram+=v, (v)=>`同時投擲数 +${v}`));
     }
 
-    // ★【復活】ホーミング (射撃系クラス用)
-    // Sniper, Assault, Trickster, Tempest, Alchemist で出現
-    if(['Sniper', 'Assault', 'Trickster', 'Tempest', 'Alchemist'].includes(player.class) || stats.homing > 0) {
+    // ★【復活＆修正】ホーミング (射撃系クラス用 + Novice追加)
+    // ヴァンガード(Melee)以外なら出現するように設定
+    if(player.class !== 'Melee' || stats.homing > 0) {
+        // 出やすいように2回登録
+        pool.push(createOpt('homing', '👁️', 'ホーミング', 1, 'Lv', (v)=>stats.homing+=v, (v)=>`追尾性能 +${v}`));
         pool.push(createOpt('homing', '👁️', 'ホーミング', 1, 'Lv', (v)=>stats.homing+=v, (v)=>`追尾性能 +${v}`));
     }
 
@@ -2415,7 +2418,7 @@ function showUpgrade() {
     }
 
     // 貫通 (射撃系)
-    if(['Sniper', 'Assault', 'Trickster', 'Tempest'].includes(player.class)) {
+    if(['Sniper', 'Assault', 'Trickster', 'Tempest', 'Novice'].includes(player.class)) {
         pool.push(createOpt('pierce', '🏹', '貫通力', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
     }
 
@@ -2434,7 +2437,7 @@ function showUpgrade() {
     }
     
     // ノックバック
-    if(['Melee', 'Sniper', 'Assault'].includes(player.class)) {
+    if(['Melee', 'Sniper', 'Assault', 'Novice'].includes(player.class)) {
         pool.push(createOpt('knockback', '🥊', '衝撃力', 1, '', (v)=>stats.knockback+=v, (v)=>`ノックバック +${v}`));
     }
 
@@ -2444,6 +2447,7 @@ function showUpgrade() {
     } else if(player.class === 'Samurai') {
         pool.push(createOpt('multi', '🌊', '衝撃波+', 1, '', (v)=>stats.multi+=v, (v)=>`衝撃波の数 +${v}`));
     } else {
+        // Novice含む射撃系
         pool.push(createOpt('multi', '🔫', 'マルチショット', 1, '', (v)=>stats.multi+=v, (v)=>`同時発射数 +${v}`));
     }
 
