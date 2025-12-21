@@ -1704,7 +1704,7 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
-        nextExp = Math.floor(nextExp * 1.15) + 500; 
+        nextExp = Math.floor(nextExp * 1.05) + 200; 
         Sound.play('levelup'); updateUI(); 
         
         if(level === 5) showEvo(); 
