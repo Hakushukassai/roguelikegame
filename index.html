@@ -1999,6 +1999,9 @@ function update(ts) {
             if (e.flash > 0) e.flash -= ts;
             
             if(e.ai === 'dasher') {
+
+                if(!e.state) e.state = 'chase';
+                
                 if(e.state === 'chase') {
                     e.x += Math.cos(angle) * e.speed * ts; e.y += Math.sin(angle) * e.speed * ts;
                     if(dist < 250) { e.state = 'aim'; e.timer = 30; } 
