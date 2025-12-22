@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v6</title>
+    <title>Evo Lite v6.0</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -25,7 +25,17 @@
         #top-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); text-align: center; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); width: 80%; max-width: 600px; }
         #xp-bg { width: 100%; height: 12px; background: #222; margin-top: 8px; border: 1px solid #555; border-radius: 6px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.5);}
         #xp-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #00ffff, #0088ff); transition: width 0.1s; }
-        #skill-list { position: absolute; top: 60px; right: 20px; text-align: right; color: rgba(255,255,255,0.8); font-size: 11px; line-height: 1.4; text-shadow: 1px 1px 2px #000; pointer-events: none; }
+        #skill-list { 
+            position: absolute; 
+            top: 120px; /* 60px -> 90px に変更 */
+            right: 20px; 
+            text-align: right; 
+            color: rgba(255,255,255,0.8); 
+            font-size: 11px; 
+            line-height: 1.4; 
+            text-shadow: 1px 1px 2px #000; 
+            pointer-events: none; 
+        }
         
         #hp-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 300px; text-align: center; color: white; font-weight: bold; pointer-events: none; }
         #hp-bar-bg { width: 100%; height: 16px; background: #330000; border: 2px solid #555; border-radius: 8px; overflow: hidden; margin-top:5px; box-shadow: 0 0 10px #f00; }
@@ -90,6 +100,130 @@
         
         .singularity-mode #gameCanvas { filter: invert(1) hue-rotate(180deg); }
         .singularity-mode #ui-layer { filter: invert(0); }
+
+        /* ポーズボタン (右上に固定) */
+        /* --- ポーズボタン (ネオン風) --- */
+        #pause-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 20, 40, 0.6);
+            border: 2px solid #0ff;
+            border-radius: 50%; /* 丸くする */
+            box-shadow: 0 0 10px #0ff, inset 0 0 10px #0ff;
+            cursor: pointer;
+            z-index: 100;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px; /* 2本線の間隔 */
+            transition: all 0.2s;
+            pointer-events: auto; /* 明示的にクリック有効化 */
+            -webkit-tap-highlight-color: transparent; /* モバイルのタップ背景色消し */
+        }
+
+        /* ポーズアイコンの2本線 */
+        #pause-btn span {
+            display: block;
+            width: 6px;
+            height: 20px;
+            background-color: #fff;
+            border-radius: 2px;
+            box-shadow: 0 0 5px #fff;
+        }
+
+        #pause-btn:active {
+            transform: scale(0.9);
+            background: rgba(0, 255, 255, 0.3);
+        }
+
+        /* --- ポーズメニュー (ガラスモーフィズム & サイバー調) --- */
+        #pause-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px); /* 背景ぼかし */
+            z-index: 101;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: auto; /* ★ここを追加！これがないとボタンが押せません */
+        }
+
+        /* ポーズメニューが開いた時のアニメーション用クラス */
+        #pause-menu.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .pause-content {
+            background: rgba(0, 20, 30, 0.9);
+            border: 1px solid #0ff;
+            padding: 40px 60px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2), inset 0 0 20px rgba(0, 255, 255, 0.1);
+            min-width: 200px;
+        }
+
+        .pause-content h1 {
+            color: #fff;
+            font-size: 40px;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 15px #0ff, 0 0 30px #0ff;
+            letter-spacing: 5px;
+            font-style: italic;
+        }
+
+        .pause-stats {
+            color: #aaa;
+            font-family: monospace;
+            font-size: 16px;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+        }
+
+        /* メニューボタン共通スタイル */
+        .menu-btn {
+            display: block;
+            width: 100%;
+            margin: 15px 0;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            text-transform: uppercase;
+            transition: 0.2s;
+            letter-spacing: 2px;
+            clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%); /* 角を削る */
+        }
+
+        .menu-btn.resume {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 15px #0ff;
+        }
+        .menu-btn.resume:active { transform: scale(0.95); box-shadow: 0 0 5px #0ff; }
+
+        .menu-btn.restart {
+            background: transparent;
+            border: 1px solid #f00;
+            color: #f00;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+        }
+        .menu-btn.restart:active { background: #300; transform: scale(0.95); }
     </style>
 </head>
 <body id="main-body">
@@ -102,6 +236,22 @@
 </div>
 
 <div id="ui-layer">
+    <button id="pause-btn" onclick="togglePause()">
+    <span></span><span></span>
+    </button>
+
+    <div id="pause-menu">
+        <div class="pause-content">
+            <h1>PAUSED</h1>
+            <div class="pause-stats">
+                SCORE: <span id="pause-score">0</span><br>
+                LV: <span id="pause-lv">0</span>
+            </div>
+            <button class="menu-btn resume" onclick="togglePause()">RESUME</button>
+            <button class="menu-btn restart" onclick="restartGame()">RESTART</button>
+        </div>
+    </div>
+
     <div id="score-box">SCORE: <span id="disp-score">0</span><br>TIME: <span id="disp-time">00:00</span></div>
     
     <div id="stats-list"></div>
@@ -131,7 +281,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v6</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v6.0</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -152,105 +302,140 @@ const MAX_SOUND_CONCURRENT = 32;
 // --- 敵のステータス定義データベース ---
 const ENEMY_DATA = {
     // ID: { baseHp: 基礎HP, size: サイズ, color: 色, baseSpeed: 基礎速度, ai: AIタイプ, speedMult: 速度補正(省略可) }
-    boss:    { baseHp: 3000, size: 90, color: '#cc0000', baseSpeed: 2.5, ai: 'boss' },
-    golem:   { baseHp: 450,  size: 25, color: '#2F4F4F', baseSpeed: 2.0, ai: 'normal', speedMult: 0.3 }, // ゴーレムは遅い
-    dasher:  { baseHp: 25,   size: 18, color: '#ff3333', baseSpeed: 2.5, ai: 'dasher' },
-    splitter:{ baseHp: 20,   size: 20, color: '#ff3333', baseSpeed: 1.2, ai: 'splitter' },
-    bat:     { baseHp: 8,    size: 10, color: '#ff3333', baseSpeed: 5.0, ai: 'bat' },
-    shooter: { baseHp: 22,   size: 15, color: '#ff3333', baseSpeed: 1.8, ai: 'shooter' },
-    tank:    { baseHp: 80,   size: 24, color: '#ff3333', baseSpeed: 1.0, ai: 'tank' },
-    minion:  { baseHp: 8,    size: 10, color: '#ff3333', baseSpeed: 3.0, ai: 'normal' },
+    boss:    { baseHp: 3000, size: 90, color: '#cc0000', baseSpeed: 3.5, ai: 'boss' },
+    golem:   { baseHp: 800,  size: 25, color: '#2F4F4F', baseSpeed: 2.5, ai: 'normal', speedMult: 0.3 }, // ゴーレムは遅い
+    dasher:  { baseHp: 40,   size: 18, color: '#ff3333', baseSpeed: 3.5, ai: 'dasher' },
+    splitter:{ baseHp: 30,   size: 20, color: '#ff3333', baseSpeed: 2.0, ai: 'splitter' },
+    bat:     { baseHp: 12,    size: 10, color: '#ff3333', baseSpeed: 6.0, ai: 'bat' },
+    shooter: { baseHp: 30,   size: 15, color: '#ff3333', baseSpeed: 1.8, ai: 'shooter' },
+    tank:    { baseHp: 150,   size: 24, color: '#ff3333', baseSpeed: 1.5, ai: 'tank' },
+    minion:  { baseHp: 12,    size: 10, color: '#ff3333', baseSpeed: 3.0, ai: 'normal' },
     // デフォルト（定義がない場合用）
-    normal:  { baseHp: 15,   size: 14, color: '#ff3333', baseSpeed: 2.0, ai: 'normal' }
+    normal:  { baseHp: 15,   size: 14, color: '#ff3333', baseSpeed: 2.5, ai: 'normal' }
 };
 
 // --- アップグレード（通常レベルアップ）の定義 ---
+// --- アップグレード（通常レベルアップ）の定義：改修版 ---
+// --- アップグレード（通常レベルアップ）の定義：表示修正版 ---
 const UPGRADE_DATA = [
-    // --- 基本ステータス (条件なし) ---
-    { id: 'dmg_p', icon: '💪', title: '攻撃力UP', val: 15, unit: '%', desc: v=>`ダメージ +${v}%`, 
+    // --- 基本ステータス ---
+    { id: 'dmg_p', icon: '💪', title: '攻撃力', val: 15, unit: '%', 
+      desc: v=>`ダメージ +${v}%`, 
       func: (v)=> stats.dmg = Math.floor(stats.dmg*(1+v/100)) },
     
-    { id: 'hp', icon: '❤️', title: '最大HP', val: 50, unit: '', desc: v=>`HP +${v}`, 
+    { id: 'hp', icon: '❤️', title: '最大HP', val: 50, unit: '', 
+      // ★修正: ヴァンガード(Melee)のみ攻撃力UPの表記を追加
+      desc: v=> {
+          let str = `最大HP +${v}`;
+          if(player.class === 'Melee') str += "\n(攻撃力もUP!)";
+          return str;
+      },
       func: (v)=> { player.maxHp+=v; player.hp+=v; } },
       
-    { id: 'spd', icon: '👟', title: '移動速度', val: 2, unit: '', desc: v=>`速度 +${v}`, 
+    { id: 'spd', icon: '👟', title: '移動速度', val: 2, unit: '', 
+      desc: v=>`移動速度 +${v}`, 
       func: (v)=> stats.spd+=v },
       
-    { id: 'crit', icon: '🎯', title: 'クリティカル', val: 5, unit: '%', desc: v=>`会心率 +${v}%`, 
+    { id: 'crit', icon: '🎯', title: 'クリティカル', val: 5, unit: '%', 
+      desc: v=>`会心率 +${v}%`, 
       func: (v)=> stats.critChance+=v/100 },
       
-    { id: 'magnet', icon: '🧲', title: '収集範囲', val: 50, unit: '', desc: v=>`範囲 +${v}`, 
+    { id: 'magnet', icon: '🧲', title: '収集範囲', val: 50, unit: '', 
+      desc: v=>`アイテム回収距離 +${v}`, 
       func: (v)=> stats.magnet+=v },
       
-    { id: 'lightning', icon: '🌩️', title: '雷撃強化', val: 1, unit: 'Lv', desc: v=>`雷撃レベル +${v}`, 
-      func: (v)=> stats.lightning+=v },
-      
-    { id: 'rate', icon: '⚡', title: 'クールダウン', val: 5, unit: '%', desc: v=>`攻撃間隔 -${v}%`, 
+    { id: 'rate', icon: '⚡', title: '連射速度', val: 5, unit: '%', 
+      desc: v=> {
+          if(player.class === 'Melee' || player.class === 'Samurai') return `攻撃間隔 -${v}%`;
+          return `連射速度 +${v}%`; 
+      },
       func: (v)=> stats.rate = Math.max(2, stats.rate*(1-v/100)) },
 
-    // --- 条件付きアイテム (condition関数がtrueの時のみ出現) ---
+    { id: 'lightning', icon: '🌩️', title: '雷撃', val: 1, unit: 'Lv', 
+      desc: v=>`攻撃時、確率で落雷が発生\n(Lv +${v})`, 
+      func: (v)=> stats.lightning+=v },
+
+    // --- 条件付きアイテム ---
     
-    // 回復系 (レアと通常でIDを分ける必要はなく、ロジックで分岐も可能ですが、今回はシンプルに定義)
-    { id: 'regen', icon: '💖', title: 'リジェネ', val: 2, unit: '', desc: v=>`HP回復 +${v}/s`, 
-      func: (v)=> stats.regen+=v, weight: 0.8 }, // weightで出現率調整も可能
+    { id: 'regen', icon: '💖', title: 'リジェネ', val: 2, unit: '', 
+      desc: v=>`HP自然回復 +${v}/秒`, 
+      func: (v)=> stats.regen+=v, weight: 0.8 }, 
       
-    { id: 'drone', icon: '🛰️', title: 'ビット増設', val: 1, unit: '機', desc: v=>`ビット数 +${v}`, 
+    { id: 'drone', icon: '🛰️', title: 'ビット増設', val: 1, unit: '機', 
+      desc: v=>`自動攻撃ビット +${v}機`, 
       func: (v)=> stats.drones+=v, 
       condition: ()=> player.class === 'Sniper' || stats.drones > 0 },
       
-    { id: 'missile', icon: '🚀', title: 'ミサイル', val: 1, unit: 'Lv', desc: v=>`発射数/頻度 +${v}`, 
+    { id: 'missile', icon: '🚀', title: 'ミサイル', val: 1, unit: 'Lv', 
+      desc: v=>`定期的に誘導弾を発射\n(Lv +${v})`, 
       func: (v)=> stats.missile+=v, 
       condition: ()=> player.class === 'Assault' || stats.missile > 0 },
       
-    { id: 'chakram', icon: '🥏', title: 'チャクラム', val: 1, unit: '個', desc: v=>`同時投擲数 +${v}`, 
+    { id: 'chakram', icon: '🥏', title: 'チャクラム', val: 1, unit: '個', 
+      desc: v=>`跳ね返る円盤を投げる\n(数 +${v})`, 
       func: (v)=> stats.chakram+=v, 
       condition: ()=> player.class === 'Trickster' || stats.chakram > 0 },
       
-    // ホーミング: Melee以外、または既に持っている場合
-    { id: 'homing', icon: '👁️', title: 'ホーミング', val: 1, unit: 'Lv', desc: v=>`追尾性能 +${v}`, 
+    { id: 'homing', icon: '👁️', title: '誘導性能', val: 1, unit: 'Lv', 
+      desc: v=>`弾が敵を追尾する\n(性能 +${v})`, 
       func: (v)=> stats.homing+=v, 
-      condition: ()=> player.class !== 'Melee' || stats.homing > 0 },
+      condition: ()=> !['Melee','Samurai'].includes(player.class) || stats.homing > 0 },
 
-    // 範囲拡大: 特定クラス用
-    { id: 'area', icon: '💥', title: '攻撃範囲', val: 10, unit: '%', desc: v=>`サイズ +${v}%`, 
+    { id: 'area', icon: '💥', title: '攻撃範囲', val: 10, unit: '%', 
+      desc: v=> {
+          if(player.class==='Melee') return `オーラサイズ +${v}%`;
+          if(player.class==='Samurai') return `斬撃の巨大化 +${v}%`;
+          if(player.class==='Alchemist') return `毒ガス範囲 +${v}%`;
+          return `弾の大きさ +${v}%`;
+      },
       func: (v)=> { stats.areaScale += v/100; if(player.class==='Melee') player.size*=1.05; }, 
-      condition: ()=> ['Melee','Guardian','Alchemist'].includes(player.class) },
+      condition: ()=> true },
       
-    // 弾速: 近接以外
-    { id: 'bullet_speed', icon: '🚅', title: '弾速', val: 10, unit: '%', desc: v=>`弾の速さ +${v}%`, 
+    { id: 'bullet_speed', icon: '🚅', title: '弾速', val: 10, unit: '%', 
+      desc: v=> {
+          if(player.class==='Samurai') return `斬撃の飛距離・速度 +${v}%`;
+          return `弾の飛ぶ速さ +${v}%`;
+      },
       func: (v)=> stats.bulletSpeed*=(1+v/100), 
-      condition: ()=> !['Melee','Samurai','Guardian'].includes(player.class) },
+      condition: ()=> !['Melee','Guardian'].includes(player.class) },
       
-    // 貫通: 射撃系クラス
-    { id: 'pierce', icon: '🏹', title: '貫通力', val: 1, unit: '', desc: v=>`貫通数 +${v}`, 
+    { id: 'pierce', icon: '🏹', title: '貫通力', val: 1, unit: '', 
+      desc: v=>`敵を貫通する数 +${v}`, 
       func: (v)=> stats.pierce+=v, 
-      condition: ()=> ['Sniper','Assault','Trickster','Tempest','Novice'].includes(player.class) },
+      condition: ()=> ['Assault','Trickster','Tempest','Novice','Sniper'].includes(player.class) && !stats.infinitePierce },
 
-    // 持続時間: 設置系スキル持ち
-    { id: 'duration', icon: '⏳', title: '効果時間', val: 15, unit: '%', desc: v=>`持続時間 +${v}%`, 
+    { id: 'duration', icon: '⏳', title: '効果時間', val: 15, unit: '%', 
+      desc: v=>`毒・設置物の持続 +${v}%`, 
       func: (v)=> stats.duration+=v/100, 
-      condition: ()=> player.class==='Alchemist' || player.class==='Guardian' || stats.clusterMine || stats.poison>0 },
+      condition: ()=> player.class==='Alchemist' || stats.clusterMine || stats.poison>0 },
 
-    // 防御力
-    { id: 'armor', icon: '🛡️', title: '装甲強化', val: 2, unit: '', desc: v=>`被ダメージ -${v}`, 
+    { id: 'armor', icon: '🛡️', title: '装甲強化', val: 2, unit: '', 
+      // ★修正: ヴァンガード(Melee)のみ攻撃力UP表記
+      desc: v=> {
+          let str = `被ダメージ -${v}`;
+          if(player.class === 'Melee') str += "\n(攻撃力・反射痛もUP!)";
+          return str;
+      },
       func: (v)=> stats.armor+=v, 
-      condition: ()=> ['Melee','Samurai','Guardian'].includes(player.class) },
+      condition: ()=> ['Melee','Samurai','Guardian'].includes(player.class) || stats.armor > 0 },
 
-    // ノックバック
-    { id: 'knockback', icon: '🥊', title: '衝撃力', val: 1, unit: '', desc: v=>`ノックバック +${v}`, 
+    { id: 'knockback', icon: '🥊', title: '衝撃力', val: 1, unit: '', 
+      desc: v=>`敵を弾き飛ばす距離 +${v}`, 
       func: (v)=> stats.knockback+=v, 
-      condition: ()=> ['Melee','Sniper','Assault','Novice'].includes(player.class) },
+      condition: ()=> ['Sniper','Assault','Novice','Trickster'].includes(player.class) },
 
-    // マルチショット系
-    { id: 'multi_blade', icon: '⚔️', title: '回転刃+', val: 1, unit: '', desc: v=>`回転刃の数 +${v}`, 
+    { id: 'multi_blade', icon: '⚔️', title: '回転刃+', val: 1, unit: '', 
+      desc: v=>`周囲の刃の数 +${v}`, 
       func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Melee' },
       
-    { id: 'multi_wave', icon: '🌊', title: '衝撃波+', val: 1, unit: '', desc: v=>`衝撃波の数 +${v}`, 
+    { id: 'multi_wave', icon: '🌊', title: '衝撃波+', val: 1, unit: '', 
+      desc: v=>`斬撃時の衝撃波 +${v}`, 
       func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Samurai' },
       
-    { id: 'multi_shot', icon: '🔫', title: 'マルチショット', val: 1, unit: '', desc: v=>`同時発射数 +${v}`, 
+    { id: 'multi_shot', icon: '🔫', title: 'マルチショット', val: 1, unit: '', 
+      desc: v=>`同時発射数 +${v}`, 
       func: (v)=> stats.multi+=v, 
-      condition: ()=> !['Melee','Samurai'].includes(player.class) }
+      condition: ()=> !['Melee','Samurai','Sniper'].includes(player.class) }
 ];
 
 // --- 禁断の力（Milestone）の定義 ---
@@ -406,7 +591,7 @@ const EVO_DATA = [
       }},
     { id: 'Melee', icon: '🛡️', title: 'ヴァンガード', desc: '近接: 超・広範囲 & HP+500/リジェネ+10', 
       color: '#ff3333', func: ()=>{
-        stats.aura=true; stats.auraRange=180; stats.spd+=4; 
+        stats.aura=true; stats.auraRange=180; stats.spd+=1; 
         player.maxHp+=500; player.hp+=500; stats.regen+=10;
       }},
     { id: 'Sniper', icon: '🔭', title: 'スナイパー', desc: '遠距離: 💥破片 & 🔙ノックバック', 
@@ -493,6 +678,7 @@ if(isMobile) {
 let joyTouchId = null;
 let joyStartX = 0, joyStartY = 0;
 let joyMoveX = 0, joyMoveY = 0;
+let isPaused = false;
 const JOY_MAX_RADIUS = 50;
 
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -704,10 +890,19 @@ if(dashBtn) {
     }, {passive: false});
 }
 
-// ヘルパー：タッチした場所がボタンやカードかどうか判定
+
+// ▼▼▼ 修正版 isInteractive 関数 ▼▼▼
 function isInteractive(target) {
-    // ボタン、またはカード（レベルアップ選択肢）の上なら true
-    return target.tagName === 'BUTTON' || target.closest('.card') || target.id === 'dash-btn';
+    // 1. ポーズボタンそのもの、またはその中身ならOK
+    if (target.id === 'pause-btn' || target.closest('#pause-btn')) return true;
+
+    // 2. ★追加: ポーズメニューの中にある要素なら何でもOK
+    // これにより、RESUMEやRESTARTボタンが確実に押せるようになります
+    if (target.closest('#pause-menu')) return true;
+
+    // 3. その他のボタンやカード、ダッシュボタンの判定
+    // (tagNameチェックを closest('button') に変えて、ボタン内の文字を押しても反応するように強化)
+    return target.closest('button') || target.closest('.card') || target.id === 'dash-btn';
 }
 
 // ジョイスティック処理（修正版 v2）
@@ -808,6 +1003,47 @@ function updateJoystick(cx, cy) {
     if(knob) knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 }
 
+function togglePause() {
+    // ゲームオーバー時などは無効
+    let gameOverElem = document.getElementById('game-over');
+    let levelUpElem = document.getElementById('menu-overlay');
+    let startScreenElem = document.getElementById('start-screen');
+    
+    if (gameOverElem.style.display === 'flex' || 
+        levelUpElem.style.display === 'flex' || 
+        startScreenElem.style.display === 'flex') {
+        return;
+    }
+
+    let menu = document.getElementById('pause-menu');
+
+    if (!isPaused) {
+        // --- ポーズ ---
+        isPaused = true;
+        gameActive = false;
+        
+        // 現在のスコアなどを表示反映
+        document.getElementById('pause-score').innerText = Math.floor(score);
+        document.getElementById('pause-lv').innerText = level;
+
+        // CSSアニメーション用クラス付与
+        menu.classList.add('active'); 
+    } else {
+        // --- 再開 ---
+        isPaused = false;
+        menu.classList.remove('active');
+        
+        // 時間同期
+        lastTime = performance.now(); 
+        
+        gameActive = true; 
+        requestAnimationFrame(loop); 
+    }
+}
+
+function restartGame() {
+    location.reload();
+}
 
 function startGame() {
     document.getElementById('start-screen').style.display = 'none';
@@ -1026,8 +1262,8 @@ function update(ts) {
         player.isMoving = false;
     }
 
-    player.x = Math.max(15, Math.min(canvas.width-15, player.x));
-    player.y = Math.max(15, Math.min(canvas.height-15, player.y));
+    // player.x = Math.max(15, Math.min(canvas.width-15, player.x));
+    // player.y = Math.max(15, Math.min(canvas.height-15, player.y));
 
     if(stats.isEarthShaker && player.isMoving) {
         if(Math.floor(Date.now() / 200) % 2 === 0) { 
@@ -1378,8 +1614,38 @@ function update(ts) {
         if(b.type === 'chakram') {
             b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts; 
             if(b.life <= 0) { bullets.splice(i, 1); continue; }
-            if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
-            if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
+
+            // --- ★修正箇所：チャクラムの跳ね返り判定をカメラ座標に対応 ---
+            let camHalfW = canvas.width / 2;
+            let camHalfH = canvas.height / 2;
+            let left = player.x - camHalfW;
+            let right = player.x + camHalfW;
+            let top = player.y - camHalfH;
+            let bottom = player.y + camHalfH;
+
+            // 左右の壁判定
+            if(b.x < left) { 
+                b.x = left; 
+                b.vx *= -1; 
+                Sound.play('bounce'); 
+            } else if(b.x > right) { 
+                b.x = right; 
+                b.vx *= -1; 
+                Sound.play('bounce'); 
+            }
+
+            // 上下の壁判定
+            if(b.y < top) { 
+                b.y = top; 
+                b.vy *= -1; 
+                Sound.play('bounce'); 
+            } else if(b.y > bottom) { 
+                b.y = bottom; 
+                b.vy *= -1; 
+                Sound.play('bounce'); 
+            }
+            // -------------------------------------------------------
+
             for(let j=enemies.length-1; j>=0; j--) {
                 let e = enemies[j];
                 if(e.dead || b.hit.includes(e.id)) continue;
@@ -1397,6 +1663,8 @@ function update(ts) {
             }
             if(b.bounceCd > 0) b.bounceCd -= ts;
             if(Math.random()<0.3 && particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#8ff', 1, 1);
+            
+            // チャクラムはここで処理を終えるため continue する
             continue;
         }
         
@@ -1443,28 +1711,91 @@ function update(ts) {
                 if(b.life <= 0) { bullets.splice(i, 1); continue; }
             }
             if(stats.ghostShot) {
+                // 現在のカメラの表示範囲を計算
+                let camHalfW = canvas.width / 2;
+                let camHalfH = canvas.height / 2;
+                
+                let leftEdge = player.x - camHalfW;
+                let rightEdge = player.x + camHalfW;
+                let topEdge = player.y - camHalfH;
+                let bottomEdge = player.y + camHalfH;
+
                 let wrapped = false;
-                if(b.x < 0) { b.x = canvas.width; wrapped=true; }
-                else if(b.x > canvas.width) { b.x = 0; wrapped=true; }
-                if(b.y < 0) { b.y = canvas.height; wrapped=true; }
-                else if(b.y > canvas.height) { b.y = 0; wrapped=true; }
+
+                // 左端を超えたら右端へ
+                if(b.x < leftEdge) { 
+                    b.x = rightEdge - 5; // 微調整で少し内側に出す
+                    wrapped = true; 
+                } 
+                // 右端を超えたら左端へ
+                else if(b.x > rightEdge) { 
+                    b.x = leftEdge + 5; 
+                    wrapped = true; 
+                }
+                
+                // 上端を超えたら下端へ
+                if(b.y < topEdge) { 
+                    b.y = bottomEdge - 5; 
+                    wrapped = true; 
+                } 
+                // 下端を超えたら上端へ
+                else if(b.y > bottomEdge) { 
+                    b.y = topEdge + 5; 
+                    wrapped = true; 
+                }
+
                 if(wrapped) {
+                    // ワープ時の強化処理（元のまま）
                     b.size = Math.min(50, b.size * 1.5); 
                     b.damageMult = Math.min(8.0, (b.damageMult || 1) * 1.5);
                     if(b.life === undefined) b.life = 180; 
+                    
+                    // 寿命を減らす（無限ループ防止）
                     b.life -= 60; 
                     if(b.life <= 0) { bullets.splice(i, 1); continue; }
-                    b.pierce = 999; 
+                    
+                    b.pierce = 999; // 貫通力付与
                 }
             }
         }
 
-        if(stats.shotBounce && (b.type === 'normal')) {
-            if(b.x < 0 || b.x > canvas.width) { b.vx *= -1; b.x = Math.max(0, Math.min(canvas.width, b.x)); Sound.play('bounce'); }
-            if(b.y < 0 || b.y > canvas.height) { b.vy *= -1; b.y = Math.max(0, Math.min(canvas.height, b.y)); Sound.play('bounce'); }
+        if(stats.shotBounce && (b.type === 'normal' || b.type === 'chakram')) {
+            // 現在のカメラの表示範囲（画面の端）を計算
+            let camLeft = player.x - canvas.width / 2;
+            let camRight = player.x + canvas.width / 2;
+            let camTop = player.y - canvas.height / 2;
+            let camBottom = player.y + canvas.height / 2;
+
+            // 画面の「左端」または「右端」に当たったらX方向反転
+            if(b.x < camLeft) { 
+                b.x = camLeft; 
+                b.vx *= -1; 
+                Sound.play('bounce'); 
+            } else if(b.x > camRight) { 
+                b.x = camRight; 
+                b.vx *= -1; 
+                Sound.play('bounce'); 
+            }
+
+            // 画面の「上端」または「下端」に当たったらY方向反転
+            if(b.y < camTop) { 
+                b.y = camTop; 
+                b.vy *= -1; 
+                Sound.play('bounce'); 
+            } else if(b.y > camBottom) { 
+                b.y = camBottom; 
+                b.vy *= -1; 
+                Sound.play('bounce'); 
+            }
         }
         
-        if(!stats.ghostShot && (b.x < -boundary || b.x > canvas.width+boundary || b.y < -boundary || b.y > canvas.height+boundary)) { bullets.splice(i, 1); continue; }
+        if(!stats.ghostShot) {
+            // 以前のコード: if(b.x < -boundary || b.x > canvas.width+boundary ...)
+            // ↓ 新しいコード:
+            if(Math.hypot(b.x - player.x, b.y - player.y) > 2000) { 
+                bullets.splice(i, 1); continue; 
+            }
+        }
 
         let hit = false;
         for(let j=enemies.length-1; j>=0; j--) {
@@ -1571,7 +1902,9 @@ function update(ts) {
     for(let i=enemyBullets.length-1; i>=0; i--) {
         let b = enemyBullets[i];
         b.x += b.vx * ts; b.y += b.vy * ts;
-        if(b.x < -100 || b.x > canvas.width+100 || b.y < -100 || b.y > canvas.height+100) { enemyBullets.splice(i, 1); continue; }
+        if(Math.hypot(b.x - player.x, b.y - player.y) > 2000) { 
+            enemyBullets.splice(i, 1); continue; 
+        }
         if(Math.hypot(player.x-b.x, player.y-b.y) < player.size + b.size) { 
             let dmg = 10 + Math.floor(level * 0.5);
             takeDamage(dmg); 
@@ -1708,17 +2041,33 @@ function update(ts) {
         if(!gameActive) break; 
         let o = expOrbs[i];
         
-        let d = Math.hypot(player.x - o.x, player.y - o.y);
+        // プレイヤーとの距離計算
+        let distX = player.x - o.x;
+        let distY = player.y - o.y;
+        let d = Math.hypot(distX, distY);
 
-        if(o.forceCollect) {
-            o.x += (player.x - o.x) * 0.2 * ts; 
-            o.y += (player.y - o.y) * 0.2 * ts;
-        } else if(d < stats.magnet) {
-            o.x += (player.x - o.x) * 0.25 * ts; 
-            o.y += (player.y - o.y) * 0.25 * ts; 
+        // 「強制回収」または「マグネット範囲内」なら近づく
+        if(o.forceCollect || d < stats.magnet) {
+            // ★修正ポイント:
+            // 割合移動ではなく、「現在のプレイヤー速度 + アルファ」で追いかけるように変更
+            
+            // 角度を計算
+            let angle = Math.atan2(distY, distX);
+            
+            // 追尾速度 = (プレイヤーの速度 * 1.5倍) + (距離に応じた加速) + (最低保証速度)
+            // これで、どんなにプレイヤーが速くても絶対に追いつきます
+            let chaseSpeed = (stats.spd * 1.5) + (d * 0.05) + 10;
+            
+            o.x += Math.cos(angle) * chaseSpeed * ts;
+            o.y += Math.sin(angle) * chaseSpeed * ts;
         }
         
-        if(d < 20) { addExp(o.val); Sound.play('exp', o.pitch); expOrbs.splice(i, 1); }
+        // 当たり判定 (20px以内なら回収)
+        if(Math.hypot(player.x - o.x, player.y - o.y) < 20) { 
+            addExp(o.val); 
+            Sound.play('exp', o.pitch); 
+            expOrbs.splice(i, 1); 
+        }
     }
 
     for(let i=items.length-1; i>=0; i--) {
@@ -1945,8 +2294,8 @@ function dash() {
 
     player.x += dx * 100;
     player.y += dy * 100;
-    player.x = Math.max(15, Math.min(canvas.width-15, player.x));
-    player.y = Math.max(15, Math.min(canvas.height-15, player.y));
+    // player.x = Math.max(15, Math.min(canvas.width-15, player.x));
+    // player.y = Math.max(15, Math.min(canvas.height-15, player.y));
     
     if(stats.clusterMine) {
          for(let i=0; i<3; i++) {
@@ -2060,37 +2409,72 @@ function takeDamage(dmg) {
 }
 
 function draw() {
+    // 1. 画面クリア
+    ctx.fillStyle = '#050505'; 
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. カメラ位置の計算 (プレイヤーが画面中心に来るためのオフセット)
+    // 画面揺れ(shake)もここに加算します
     let shakeX = (Math.random() - 0.5) * screenShake;
     let shakeY = (Math.random() - 0.5) * screenShake;
-    ctx.save(); ctx.translate(shakeX, shakeY);
-
-    ctx.fillStyle = '#050505'; ctx.fillRect(-20, -20, canvas.width+40, canvas.height+40);
     
-    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1; ctx.beginPath();
-    for(let i=0; i<canvas.width; i+=100) { ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); }
-    for(let i=0; i<canvas.height; i+=100) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
+    // カメラの左上座標 = プレイヤー座標 - 画面サイズの半分
+    let camX = player.x - canvas.width / 2;
+    let camY = player.y - canvas.height / 2;
+
+    ctx.save();
+    // 3. 全体をカメラの分だけ逆方向にずらす
+    ctx.translate(-camX + shakeX, -camY + shakeY);
+
+    // --- 背景グリッドの描画 (無限に見せる工夫) ---
+    // プレイヤーの位置に合わせて線を描く位置を調整
+    const gridSize = 100;
+    // 画面に見えている範囲だけ描画するための計算
+    let startX = Math.floor(camX / gridSize) * gridSize;
+    let startY = Math.floor(camY / gridSize) * gridSize;
+    
+    ctx.strokeStyle = '#1a1a1a'; 
+    ctx.lineWidth = 1; 
+    ctx.beginPath();
+    // 縦線
+    for(let i = startX; i < startX + canvas.width + gridSize; i += gridSize) { 
+        ctx.moveTo(i, startY - gridSize); 
+        ctx.lineTo(i, startY + canvas.height + gridSize); 
+    }
+    // 横線
+    for(let i = startY; i < startY + canvas.height + gridSize; i += gridSize) { 
+        ctx.moveTo(startX - gridSize, i); 
+        ctx.lineTo(startX + canvas.width + gridSize, i); 
+    }
     ctx.stroke();
+    // ------------------------------------------
 
-    // ★軽量化: 巨大な円などの描画を簡素化（shadowBlur削除など）
+    // ★以下は元の描画ロジックとほぼ同じですが、
+    // 既に ctx.translate しているので、オブジェクトの x, y をそのまま描画すればOKです。
 
+    // 絶対零度オーラ
     if(stats.absoluteZero) {
         ctx.fillStyle = 'rgba(0, 255, 255, 0.05)';
         ctx.beginPath(); ctx.arc(player.x, player.y, 250, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)'; ctx.lineWidth=1; ctx.stroke();
     }
+    // 電気柵
     if(stats.electroFence) {
         ctx.strokeStyle = `rgba(136, 255, 255, ${(electroFenceTimer/60)})`;
         ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(player.x, player.y, 150, 0, Math.PI*2); ctx.stroke();
     }
 
+    // ガス雲
     gasClouds.forEach(g => { ctx.fillStyle = `rgba(100, 0, 150, ${g.life/100})`; ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, Math.PI*2); ctx.fill(); });
 
+    // セントリー
     sentries.forEach(s => {
         ctx.fillStyle = '#0f0'; ctx.fillRect(s.x-10, s.y-10, 20, 20);
         ctx.strokeStyle = '#fff'; ctx.lineWidth=2; ctx.strokeRect(s.x-10, s.y-10, 20, 20);
     });
+    // テスラグリッド
     if(stats.teslaGrid && sentries.length >= 2) {
-        ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3; // shadowBlur削除
+        ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(sentries[0].x, sentries[0].y);
         for(let i=1; i<sentries.length; i++) ctx.lineTo(sentries[i].x, sentries[i].y);
@@ -2098,6 +2482,7 @@ function draw() {
         ctx.stroke();
     }
 
+    // 飛剣
     if(player.class === 'Melee' && flyingSwords.length > 0) {
         ctx.fillStyle = '#f0a';
         flyingSwords.forEach(sw => {
@@ -2108,6 +2493,7 @@ function draw() {
         });
     }
 
+    // スパイクビット
     if(player.class === 'Melee' && spikeBits.length > 0) {
         ctx.fillStyle = '#f00';
         spikeBits.forEach(bit => {
@@ -2115,6 +2501,7 @@ function draw() {
         });
     }
 
+    // オーラ
     if(stats.aura) {
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(Date.now() * 0.005);
         let r = stats.auraRange * stats.auraScale * stats.areaScale;
@@ -2136,9 +2523,11 @@ function draw() {
         ctx.stroke(); ctx.restore();
     }
 
+    // オービタル
     ctx.fillStyle = '#0ff';
     orbitals.forEach(o => { ctx.beginPath(); ctx.arc(o.x, o.y, 8, 0, Math.PI*2); ctx.fill(); });
     
+    // ドローン
     drones.forEach(d => {
         ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(Date.now() * 0.01);
         ctx.fillStyle = '#ff0'; ctx.fillRect(-6, -6, 12, 12);
@@ -2146,11 +2535,13 @@ function draw() {
         ctx.restore();
     });
 
+    // フォースフィールド
     if(stats.forceField && stats.forceFieldCd <= 0) {
         ctx.strokeStyle = `rgba(0, 255, 255, 0.8)`; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size + 10, 0, Math.PI*2); ctx.stroke();
     }
 
+    // アイテム
     items.forEach(it => {
         ctx.save(); ctx.translate(it.x, it.y);
         let s = 1.0 + Math.sin(Date.now()*0.01)*0.2;
@@ -2161,37 +2552,29 @@ function draw() {
         ctx.restore();
     });
 
+    // プレイヤー描画 (無敵点滅)
     if(player.invincible % 10 < 5) {
-        // ▼ 新しい描画関数を使用
         drawPlayerSprite(ctx, player);
     }
 
+    // 弾丸
     bullets.forEach(b => { 
         if(b.type === 'slash') {
-            ctx.save();
-            ctx.translate(b.x, b.y);
-            ctx.rotate(b.angle);
+            ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.angle);
             ctx.globalAlpha = Math.max(0, b.life / 15); 
-            
-            ctx.fillStyle = '#fff';
-            // ★軽量化: 斬撃の影も削除
-            ctx.beginPath();
-            ctx.arc(0, 0, b.size, -Math.PI/1.8, Math.PI/1.8); 
-            ctx.fill();
-
-            ctx.strokeStyle = '#ccffff'; ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, 0); ctx.lineTo(b.size + 20, 0);
-            ctx.stroke();
-            
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, b.size, -Math.PI/1.8, Math.PI/1.8); ctx.fill();
+            ctx.strokeStyle = '#ccffff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(b.size + 20, 0); ctx.stroke();
             ctx.restore();
             return;
         }
-
         if(b.type === 'omega') {
+            // オメガレーザーは画面全体なので座標変換の影響を受けないように注意が必要だが
+            // ここでは簡易的に「プレイヤーの前方に描画」とする
             ctx.fillStyle = `rgba(255, 0, 255, ${b.life/30})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#fff'; ctx.fillRect(0, b.y - 50, canvas.width, 100);
+            // 画面を覆う矩形を描画したいが、translateされているので camX, camY を使う
+            ctx.fillRect(camX, camY, canvas.width, canvas.height); 
+            // ビーム中心
+            ctx.fillStyle = '#fff'; ctx.fillRect(camX, b.y - 50, canvas.width, 100);
         }
         else if(b.type === 'missile') {
             ctx.fillStyle = '#f80'; ctx.beginPath(); ctx.moveTo(b.x, b.y-8); ctx.lineTo(b.x+6, b.y+6); ctx.lineTo(b.x-6, b.y+6); ctx.fill();
@@ -2207,17 +2590,41 @@ function draw() {
         }
     });
     
-    // ★軽量化: 敵弾の影削除
+    // 敵弾
     ctx.fillStyle = '#fff'; 
     enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
 
+    // 敵
     enemies.forEach(e => {
+        // (画面内にあるかどうかの簡易カリングを入れると描画負荷が減りますが、今回は全描画でもOK)
         ctx.fillStyle = e.frozen > 0 ? '#0ff' : (e.flash > 0 ? '#fff' : e.color); 
         ctx.beginPath();
         if(e.type === 'boss') {
-            // ボスだけは特別なので影を残しても良いが、軽量化優先で削除
             ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
-            ctx.fillStyle = 'red'; ctx.fillRect(e.x-40, e.y-e.size-20, 80, 8); ctx.fillStyle = '#0f0'; ctx.fillRect(e.x-40, e.y-e.size-20, 80*(e.hp/e.maxHp), 8);
+            // ボスのHPバー
+            const barWidth = 120;  // バーの固定幅（ピクセル）
+            const barHeight = 10;  // バーの高さ
+            const barX = e.x - barWidth / 2;    // 中央揃え位置計算
+            const barY = e.y - e.size - 25;     // ボスの頭上に配置
+
+            // 比率計算
+            // Math.min(1, ...) を使うことで、HPがMaxHPを超えても100%以上描画されないようにする
+            let hpRatio = e.hp / e.maxHp;
+            hpRatio = Math.max(0, Math.min(1, hpRatio)); 
+
+            // 1. 背景（枠・減った部分）を描画（暗い赤）
+            ctx.fillStyle = '#400'; 
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+
+            // 2. 現在HP（緑）を描画
+            // width に hpRatio を掛けることで、内部の値だけ伸縮させる
+            ctx.fillStyle = '#0f0'; 
+            ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+
+            // 3. 枠線を描画（白）して見やすくする
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(barX, barY, barWidth, barHeight);
         } else if(e.type === 'golem') {
             ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
             ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
@@ -2232,11 +2639,13 @@ function draw() {
         }
     });
 
+    // 経験値オーブ
     expOrbs.forEach(o => { ctx.fillStyle = o.color; ctx.beginPath(); ctx.arc(o.x, o.y, o.size, 0, Math.PI*2); ctx.fill(); });
     
+    // パーティクル
     particles.forEach(p => {
         if(p.type === 'lightning') {
-            ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = p.life / 10; // shadowBlur削除
+            ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = p.life / 10; 
             ctx.beginPath(); ctx.moveTo(p.x1, p.y1);
             let midX = (p.x1 + p.x2) / 2 + (Math.random()-0.5)*30; let midY = (p.y1 + p.y2) / 2 + (Math.random()-0.5)*30;
             ctx.lineTo(midX, midY); ctx.lineTo(p.x2, p.y2); ctx.stroke(); ctx.globalAlpha = 1.0; 
@@ -2248,11 +2657,16 @@ function draw() {
         }
     });
 
+    // ダメージテキスト (これもワールド座標に追従させます)
     ctx.font = 'bold 16px sans-serif';
     texts.forEach(t => { ctx.fillStyle = t.color || 'white'; ctx.fillText(t.str, t.x, t.y); });
 
+    // --- カメラの座標変換を解除 (ここまでが動く世界) ---
     ctx.restore();
-    let grad = ctx.createRadialGradient(player.x, player.y, 100, player.x, player.y, 800);
+
+    // --- 画面固定のUI (ビネット効果など) ---
+    // 画面の端を暗くする効果はカメラに関係なく画面全体にかける
+    let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 100, canvas.width/2, canvas.height/2, 800);
     grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.6)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
