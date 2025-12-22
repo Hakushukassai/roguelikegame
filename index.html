@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v5.5</title>
+    <title>Evo Lite v5.6</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -1149,10 +1149,24 @@ function update(ts) {
                         e.frozen = 60; 
                         createParticles(e.x, e.y, '#0ff', 5, 2);
                     }
-                    if(stats.knockback > 0 && !b.isMini) {
+                    // --- ★修正: ノックバック処理 (クールダウンとボス耐性を適用) ---
+                    // 条件: ノックバック値があり、ミニ弾ではなく、敵がノックバック待機状態でないこと
+                    if(stats.knockback > 0 && !b.isMini && e.knockbackTimer <= 0) {
                         let ang = Math.atan2(e.y - player.y, e.x - player.x);
-                        e.x += Math.cos(ang) * stats.knockback * 20;
-                        e.y += Math.sin(ang) * stats.knockback * 20;
+                        let force = stats.knockback * 20;
+
+                        // ボス耐性: 効果を 1/10 に減らす
+                        if(e.type === 'boss') {
+                            force *= 0.1;
+                        }
+
+                        e.x += Math.cos(ang) * force;
+                        e.y += Math.sin(ang) * force;
+
+                        // 内部クールダウンを設定 (単位: フレーム)
+                        // 通常敵: 10フレーム(約0.16秒)間は次のノックバックを受けない
+                        // ボス:   20フレーム(約0.33秒)間は次のノックバックを受けない
+                        e.knockbackTimer = (e.type === 'boss') ? 20 : 10;
                     }
                     if(stats.clusterStriker && !b.isMini) {
                          Sound.play('explode', 2.0);
@@ -1243,6 +1257,8 @@ function update(ts) {
 
     enemies.forEach(e => {
         if(e.dead) return;
+
+        if(e.knockbackTimer > 0) e.knockbackTimer -= ts;
         
         if(e.frozen > 0) { 
             e.frozen -= ts;
@@ -1908,7 +1924,8 @@ function spawnEnemy(mode, time) {
 }
 
 function createEnemy(type, x, y) {
-    let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0 };
+    let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0, knockbackTimer: 0 };
+    
     
     let hpMult = Math.pow(1.10, level - 1); 
     if(singularityMode) hpMult *= 2.0;
@@ -1924,9 +1941,29 @@ function createEnemy(type, x, y) {
     // ▲▲▲ 修正終わり ▲▲▲
 
     if(type === 'boss') { 
-        e.hp = 3000 * hpMult; e.maxHp = e.hp; e.size = 90; e.color = '#cc0000'; e.speed = 2.5 + (level * 0.02); e.ai='boss'; e.type='boss'; 
-        e.hp *= (1 + bossCycleCounter * 0.3); 
+        // 基本ステータス
+        e.hp = 3000 * hpMult; 
+        e.size = 90; e.color = '#cc0000'; e.ai='boss'; e.type='boss'; 
         e.dmg = 50 + (level * 2);
+        
+        // --- ★修正: ボスの後半強化ロジック (HPと速度を強化) ---
+        // 基本倍率: サイクルごとに +50%
+        let cycleMult = 1 + (bossCycleCounter * 0.5);
+        
+        // 後半(3サイクル=15分以降)の追加補正: 指数関数的にHPと速度を上げる
+        if(bossCycleCounter >= 3) {
+            let lateGameFactor = bossCycleCounter - 2; // 1, 2, 3...
+            cycleMult *= Math.pow(1.15, lateGameFactor); // サイクル毎にさらに1.15倍乗算
+            
+            // 速度も上げる (上限あり)
+            let baseSpeed = 2.5 + (level * 0.02);
+            e.speed = Math.min(6.0, baseSpeed + (lateGameFactor * 0.5)); 
+        } else {
+            e.speed = 2.5 + (level * 0.02);
+        }
+
+        e.hp *= cycleMult;
+        e.maxHp = e.hp;
     }
     else if(type === 'golem') {
         e.hp = 450 * hpMult; e.maxHp = e.hp; 
