@@ -7,6 +7,26 @@
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
+
+        /* --- モバイル用レイアウト調整 --- */
+        @media (max-width: 768px) {
+            /* メニューを上寄せにしてスクロールしやすく */
+            #menu-overlay { justify-content: flex-start; padding-top: 50px; }
+            
+            /* カードを小さくして画面にたくさん入るように */
+            .card { width: 100px; padding: 10px; min-height: 120px; }
+            .card h3 { font-size: 12px; }
+            .card p { font-size: 9px; }
+
+            /* 左上のステータス文字を小さく */
+            #stats-list { top: 60px; font-size: 10px; }
+            
+            /* 右上のスキルリストを小さく */
+            #skill-list { top: 60px; font-size: 10px; }
+            
+            /* HPバーを少し上にずらす（指で隠れないように） */
+            #hp-container { bottom: 60px; }
+        }
         
         /* UI Layers */
         #stats-list { 
@@ -65,7 +85,17 @@
         
         #menu-overlay, #start-screen, #game-over { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); pointer-events: auto; z-index: 20; display: none; justify-content: center; align-items: center; flex-direction: column; }
         #start-screen { display: flex; }
-        .card-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; max-height: 80vh; overflow-y: auto; padding: 10px; }
+        .card-container { 
+            display: flex; 
+            gap: 15px; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+            max-height: 70vh; /* ★重要: 高さを画面の70%に制限 */
+            overflow-y: auto; /* ★重要: はみ出たらスクロール */
+            -webkit-overflow-scrolling: touch; /* モバイルで滑らかにスクロール */
+            padding: 10px; 
+            width: 95%; /* 横幅も少し調整 */
+        }
         .card { width: 140px; background: #222; border: 1px solid #444; padding: 15px; color: white; cursor: pointer; text-align: center; transition: 0.1s; position: relative; overflow: hidden; border-radius: 8px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
         .card:hover, .card:active { background: #333; border-color: #0ff; transform: translateY(-5px) scale(1.05); box-shadow: 0 0 20px rgba(0,255,255,0.4); }
         
@@ -936,8 +966,10 @@ const handleTouchStart = (e) => {
 };
 
 const handleTouchMove = (e) => {
-    // 移動中は基本preventDefaultしたいが、ボタン上なら許可（スクロールは防ぎたいので条件分岐）
-    if(e.cancelable) e.preventDefault();
+    // ★修正箇所: カード画面 (.card-container) の中を触っている時は、スクロールさせるために preventDefault しない
+    if (!e.target.closest('.card-container') && !e.target.closest('#pause-menu')) {
+        if(e.cancelable) e.preventDefault();
+    }
     
     for(let i=0; i<e.changedTouches.length; i++) {
         let t = e.changedTouches[i];
