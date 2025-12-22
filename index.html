@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evo Lite v6.1</title>
+    <title>Evo Lite v6.2</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; user-select: none; touch-action: none; -webkit-touch-callout: none; transition: filter 2s; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -311,7 +311,7 @@
 
 <div id="start-screen">
     <h1 style="font-size:50px; margin:0; letter-spacing: 5px; color:#fff; text-shadow:0 0 20px #0ff; text-align:center;">EVO LITE</h1>
-    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v6.1</h2>
+    <h2 style="color:#00ff88; font-weight:normal; font-size:16px;">v6.2</h2>
     <p style="color:#aaa; margin-top:10px; font-size:12px;">PC: WASD + SPACE | Mobile: Touch & Tap</p>
     <button onclick="startGame()">START</button>
 </div>
@@ -362,8 +362,8 @@ const UPGRADE_DATA = [
       },
       func: (v)=> { player.maxHp+=v; player.hp+=v; } },
       
-    { id: 'spd', icon: '👟', title: '移動速度', val: 2, unit: '', 
-      desc: v=>`移動速度 +${v}`, 
+    { id: 'spd', icon: '👟', title: '移動スピード', val: 2, unit: '', 
+      desc: v=>`移動スピード +${v}`, 
       func: (v)=> stats.spd+=v },
       
     { id: 'crit', icon: '🎯', title: 'クリティカル', val: 5, unit: '%', 
@@ -374,16 +374,31 @@ const UPGRADE_DATA = [
       desc: v=>`アイテム回収距離 +${v}`, 
       func: (v)=> stats.magnet+=v },
       
-    { id: 'rate', icon: '⚡', title: '連射速度', val: 5, unit: '%', 
+    { id: 'rate', icon: '⚡', title: '連射スピード', val: 5, unit: '%', 
       desc: v=> {
           if(player.class === 'Melee' || player.class === 'Samurai') return `攻撃間隔 -${v}%`;
           return `連射速度 +${v}%`; 
       },
       func: (v)=> stats.rate = Math.max(2, stats.rate*(1-v/100)) },
 
-    { id: 'lightning', icon: '🌩️', title: '雷撃', val: 1, unit: 'Lv', 
+    { id: 'lightning', icon: '🌩️', title: 'ライトニング', val: 1, unit: 'Lv', 
       desc: v=>`攻撃時、確率で落雷が発生\n(Lv +${v})`, 
       func: (v)=> stats.lightning+=v },
+
+    { id: 'phantom_strike', icon: '👻', title: 'ファントム', val: 1, unit: 'Lv', 
+      desc: v=> {
+          let effect = "攻撃後、確率で追撃が発生";
+          // クラスごとのシナジー説明
+          if(player.class === 'Samurai') effect += "\n(侍: 確定会心)";
+          else if(player.class === 'Sniper') effect += "\n(狙撃: 弱った敵を処刑)";
+          else if(player.class === 'Melee') effect += "\n(近接: HP吸収)";
+          else if(player.class === 'Assault') effect += "\n(突撃: 2連撃)";
+          else if(player.class === 'Guardian') effect += "\n(守護: 衝撃波)";
+          else if(player.class === 'Alchemist') effect += "\n(錬金: 呪い付与)";
+          else if(player.class === 'Trickster') effect += "\n(奇術: ランダム倍率)";
+          return `${effect}\n(Lv +${v})`;
+      },
+      func: (v)=> stats.phantomStrike += v },
 
     // --- 条件付きアイテム ---
     
@@ -406,7 +421,7 @@ const UPGRADE_DATA = [
       func: (v)=> stats.chakram+=v, 
       condition: ()=> player.class === 'Trickster' || stats.chakram > 0 },
       
-    { id: 'homing', icon: '👁️', title: '誘導性能', val: 1, unit: 'Lv', 
+    { id: 'homing', icon: '👁️', title: 'ホーミング', val: 1, unit: 'Lv', 
       desc: v=>`弾が敵を追尾する\n(性能 +${v})`, 
       func: (v)=> stats.homing+=v, 
       condition: ()=> !['Melee','Samurai'].includes(player.class) || stats.homing > 0 },
@@ -870,6 +885,7 @@ let stats = {
     aura: false, auraRange: 0,
     regen: 1, magnet: 150, 
     homing: 0, lightning: 0, poison: 0, spinBlade: 0, chakram: 0,
+    phantomStrike: 0,
     missile: 0, drones: 0, auraScale: 1,
     lifesteal: 0, infinitePierce: false,
     missileBlast: 1, gravityAura: false, spreadShot: false,
@@ -2001,7 +2017,7 @@ function update(ts) {
             if(e.ai === 'dasher') {
 
                 if(!e.state) e.state = 'chase';
-                
+
                 if(e.state === 'chase') {
                     e.x += Math.cos(angle) * e.speed * ts; e.y += Math.sin(angle) * e.speed * ts;
                     if(dist < 250) { e.state = 'aim'; e.timer = 30; } 
@@ -2810,61 +2826,142 @@ function createEnemy(type, x, y) {
     enemies.push(e);
 }
 
-function damageEnemy(e, dmg) {
+// 関数定義の引数を変更: isPhantom = false を追加
+function damageEnemy(e, dmg, isPhantom = false) {
     if(e.dead) return; 
     
     // ガーディアンの固定砲台ボーナス
     if(stats.siegeMode && stats.isStationary) dmg *= 2;
 
-    // --- ★変更点1：クリティカル計算の強化 ---
+    // --- クリティカル計算 ---
     let isCrit = false;
-    if(Math.random() < stats.critChance || stats.deadeye) { 
-        // 以前の「3倍か2倍」という固定値ではなく、育てた stats.critMult を使う
+    if(!isPhantom && (Math.random() < stats.critChance || stats.deadeye)) { 
         let multiplier = stats.deadeye ? (stats.critMult + 1.0) : stats.critMult;
         dmg *= multiplier; 
         isCrit = true; 
     } 
-    
-    // 既存スキル：ジャイアントスレイヤー
+
+    // ジャイアントスレイヤー等（既存処理）
     if(stats.giantSlayer && (e.type === 'boss' || e.ai === 'tank')) dmg *= 2;
-    // 既存スキル：処刑人
     if(stats.executioner && (e.hp < e.maxHp * 0.2)) dmg = e.hp + 999; 
     if(stats.execute && (e.hp < e.maxHp * 0.3)) dmg = e.hp + 9999; 
-
-    // --- ★変更点2：敵HPに応じた割合ダメージ追加（ジャイアントキラー） ---
+    
+    // HP比例ダメージ（既存処理）
     if(stats.hpDamage > 0) {
-        // ボス相手だと強すぎる場合があるので、最大でも「基本ダメージの50倍」までに制限する安全策付き
         let percentDmg = e.maxHp * stats.hpDamage;
         let cap = stats.dmg * 50; 
         dmg += Math.min(percentDmg, cap);
     }
-
-    // --- ★変更点3：背水ダメージ（鮮血の爪） ---
+    // 背水ダメージ（既存処理）
     if(stats.lowHpDmg) {
-        // HPが減っている割合（0.0 ～ 1.0）
         let lostHpRatio = 1.0 - (player.hp / player.maxHp);
-        // ダメージ倍率計算（最大3倍）
         dmg *= (1.0 + lostHpRatio * 2.0);
-        
-        // 演出：威力が上がっているときはダメージ数字を赤くするなどの処理を入れると分かりやすい
-        if(lostHpRatio > 0.5) isCrit = true; // 演出用
+        if(lostHpRatio > 0.5) isCrit = true;
     }
 
-    // --- ここから下は変更なし ---
+    // ダメージ適用
     e.hp -= dmg; e.flash = 5; 
     
-    if(particles.length < MAX_PARTICLES && Math.random() < 0.2) createParticles(e.x, e.y, '#fff', 1, 2); 
-    Sound.play('hit');
+    // --- ★ここが追加箇所: 幻影撃 (Phantom Strike) のロジック ---
+    // 条件: 幻影撃Lv1以上、かつ今回のダメージが幻影撃自体ではないこと
+    if(stats.phantomStrike > 0 && !isPhantom) {
+        // 発動率: ベース20% + Lvあたり10% (Lv8で100%)
+        let chance = 0.2 + (stats.phantomStrike * 0.1);
+        
+        if(Math.random() < chance) {
+            // 追撃ダメージ計算
+            let phantomDmg = dmg * 0.5; // 基本は50%ダメージ
+            
+            // --- クラス別シナジー (ここが強い) ---
+            if(player.class === 'Samurai' || player.subClass === 'Ashura' || player.subClass === 'Kensei') {
+                // 【侍】: "心眼"。クリティカル確定＆威力100%。音がしない一撃。
+                phantomDmg = dmg * 1.0;
+                isCrit = true; 
+            }
+            else if(player.class === 'Sniper' || player.subClass === 'DimensionWalker') {
+                // 【スナイパー】: "暗殺"。画面内で一番HPが低い敵の背後にワープして攻撃する。
+                let weakest = null; let minHp = Infinity;
+                enemies.forEach(tg => { if(!tg.dead && tg.hp < minHp) { minHp=tg.hp; weakest=tg; } });
+                if(weakest && weakest !== e) {
+                    // 別の敵を攻撃
+                    damageEnemy(weakest, dmg * 1.5, true);
+                    // エフェクト: 敵の背後に黒い線が出るだけ
+                    createParticles(weakest.x, weakest.y, '#404', 1, 4);
+                    return; // 元の敵への追撃はなし
+                }
+            }
+            else if(player.class === 'Melee' || player.class === 'Vanguard') {
+                // 【ヴァンガード】: "吸血"。威力は低いがHPをわずかに回復。
+                phantomDmg = dmg * 0.3;
+                if(player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 0.5);
+            }
+            else if(player.class === 'Assault') {
+                // 【アサルト】: "残心"。30%のダメージで2回刻む。
+                phantomDmg = dmg * 0.3;
+                setTimeout(() => damageEnemy(e, phantomDmg, true), 100); // 0.1秒後に2発目
+            }
+            else if(player.class === 'Guardian') {
+                // 【ガーディアン】: "波動"。ダメージは低いが、周囲の敵を少し弾く。
+                phantomDmg = dmg * 0.3;
+                enemies.forEach(sub => {
+                    if(!sub.dead && Math.hypot(sub.x-e.x, sub.y-e.y) < 100) {
+                        sub.x += (sub.x - e.x) * 0.1; sub.y += (sub.y - e.y) * 0.1;
+                    }
+                });
+            }
+            else if(player.class === 'Alchemist') {
+                // 【アルケミスト】: "蝕み"。ダメージを与えつつ、「被ダメージ1.2倍」のデバフをかける。
+                phantomDmg = dmg * 0.4;
+                e.hpDamageTakenMult = 1.2; // ※別途ダメージ計算で e.hpDamageTakenMult を参照する必要がありますが、簡易的に追加ダメージ
+                phantomDmg += 10; 
+            }
+            else if(player.class === 'Trickster') {
+                // 【トリックスター】: "運否天賦"。0倍～5倍のランダムダメージ。
+                phantomDmg = dmg * (Math.random() * 5.0);
+            }
+            else if(player.class === 'Tempest') {
+                // 【テンペスト】: "真空"。ダメージ＋スロー効果（静かな凍結）。
+                phantomDmg = dmg * 0.6;
+                e.frozen = 30;
+            }
+
+            // 追撃実行（再帰呼び出しだが isPhantom=true なのでループしない）
+            damageEnemy(e, phantomDmg, true);
+
+            // ★「静かな」エフェクト
+            // 雷撃のような派手な線ではなく、一瞬だけ敵が暗くなるような演出
+            // 黒っぽいパーティクルを1つだけ出す
+            createParticles(e.x, e.y, '#222', 1, e.size);
+            
+            // 音は鳴らさない、あるいは極めて小さい音
+            // Sound.play('hit', 0.5); // 必要ならコメントアウト解除
+        }
+    }
+    // ----------------------------------------------------
+
+    // --- エフェクトとポップアップ（既存処理） ---
+    // 幻影撃の場合は、文字色を「灰色」にして地味さをアピール
+    let textColor = isPhantom ? '#aaa' : (isCrit ? '#ff0' : '#fff');
+    if(isPhantom) {
+        // 幻影撃のときはパーティクル少なめ
+        if(Math.random() < 0.2) createParticles(e.x, e.y, '#888', 1, 2);
+    } else {
+        if(particles.length < MAX_PARTICLES && Math.random() < 0.2) createParticles(e.x, e.y, '#fff', 1, 2); 
+        Sound.play('hit');
+    }
 
     if(isCrit || e.type === 'boss' || texts.length < 5 || Math.random() < 0.2) {
-        if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: isCrit?'#ff0':'#fff'});
+        if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: textColor});
     }
     
+    // 撃破処理（既存処理）
     if(e.hp <= 0) {
         e.dead = true; 
         Sound.play('explode'); 
         screenShake = e.type === 'boss' ? 20 : 2; 
 
+        // ... (以下、既存の撃破ロジックそのまま) ...
+        // chainBurst, shrapnel, necromancer, jackpot などの処理
         if(stats.chainBurst) {
              Sound.play('explode', 2.0);
              let range = 100;
@@ -2876,21 +2973,18 @@ function damageEnemy(e, dmg) {
                  }
              });
         }
-
         if(stats.shrapnel) {
             for(let i=0; i<3; i++) {
                 let ang = Math.random() * Math.PI * 2;
                 bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*8, vy:Math.sin(ang)*8, size:3, hit:[e.id], pierce:1, isMini:true, life:15});
             }
         }
-
         if(stats.necromancer) {
             bullets.push({type: 'spirit', x: e.x, y: e.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
         }
         if(stats.bloodLust) { 
              player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01);
         }
-
         if(stats.jackpot && Math.random() < 0.05) { 
              Sound.play('levelup');
              for(let k=0; k<5; k++) {
@@ -2900,7 +2994,6 @@ function damageEnemy(e, dmg) {
              }
              texts.push({x:e.x, y:e.y, str:"JACKPOT!", life:60, color:'#ffd700'});
         }
-
         if(stats.lifesteal > 0) { player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); updateUI(); }
         
         if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?30:3, 4);
