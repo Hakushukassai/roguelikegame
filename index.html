@@ -799,12 +799,22 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 let scaleFactor = 1;
+// --- 修正版 resizeCanvas ---
 function resizeCanvas() {
     let winW = window.innerWidth;
     let winH = window.innerHeight;
+
+    // モバイルのアドレスバー対策：
+    // 正確なウィンドウサイズをCSSスタイルにも適用して、引き伸ばしを防ぐ
+    canvas.style.width = winW + 'px';
+    canvas.style.height = winH + 'px';
+
     const isPortrait = winH > winW;
-    const targetWidth = isPortrait ? 900 : 1600;
+    // 縦画面時の基準幅を900から少し広げることで、視野の狭さを軽減（お好みで調整可）
+    const targetWidth = isPortrait ? 1080 : 1600;
+
     scaleFactor = winW < targetWidth ? targetWidth / winW : 1;
+    
     canvas.width = winW * scaleFactor;
     canvas.height = winH * scaleFactor;
 }
