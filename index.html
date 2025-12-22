@@ -149,6 +149,340 @@ const MAX_PARTICLES = 500;
 const MAX_ORBS = 400; 
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 32; 
+// --- 敵のステータス定義データベース ---
+const ENEMY_DATA = {
+    // ID: { baseHp: 基礎HP, size: サイズ, color: 色, baseSpeed: 基礎速度, ai: AIタイプ, speedMult: 速度補正(省略可) }
+    boss:    { baseHp: 3000, size: 90, color: '#cc0000', baseSpeed: 2.5, ai: 'boss' },
+    golem:   { baseHp: 450,  size: 25, color: '#2F4F4F', baseSpeed: 2.0, ai: 'normal', speedMult: 0.3 }, // ゴーレムは遅い
+    dasher:  { baseHp: 25,   size: 18, color: '#ff3333', baseSpeed: 2.5, ai: 'dasher' },
+    splitter:{ baseHp: 20,   size: 20, color: '#ff3333', baseSpeed: 1.2, ai: 'splitter' },
+    bat:     { baseHp: 8,    size: 10, color: '#ff3333', baseSpeed: 5.0, ai: 'bat' },
+    shooter: { baseHp: 22,   size: 15, color: '#ff3333', baseSpeed: 1.8, ai: 'shooter' },
+    tank:    { baseHp: 80,   size: 24, color: '#ff3333', baseSpeed: 1.0, ai: 'tank' },
+    minion:  { baseHp: 8,    size: 10, color: '#ff3333', baseSpeed: 3.0, ai: 'normal' },
+    // デフォルト（定義がない場合用）
+    normal:  { baseHp: 15,   size: 14, color: '#ff3333', baseSpeed: 2.0, ai: 'normal' }
+};
+
+// --- アップグレード（通常レベルアップ）の定義 ---
+const UPGRADE_DATA = [
+    // --- 基本ステータス (条件なし) ---
+    { id: 'dmg_p', icon: '💪', title: '攻撃力UP', val: 15, unit: '%', desc: v=>`ダメージ +${v}%`, 
+      func: (v)=> stats.dmg = Math.floor(stats.dmg*(1+v/100)) },
+    
+    { id: 'hp', icon: '❤️', title: '最大HP', val: 50, unit: '', desc: v=>`HP +${v}`, 
+      func: (v)=> { player.maxHp+=v; player.hp+=v; } },
+      
+    { id: 'spd', icon: '👟', title: '移動速度', val: 2, unit: '', desc: v=>`速度 +${v}`, 
+      func: (v)=> stats.spd+=v },
+      
+    { id: 'crit', icon: '🎯', title: 'クリティカル', val: 5, unit: '%', desc: v=>`会心率 +${v}%`, 
+      func: (v)=> stats.critChance+=v/100 },
+      
+    { id: 'magnet', icon: '🧲', title: '収集範囲', val: 50, unit: '', desc: v=>`範囲 +${v}`, 
+      func: (v)=> stats.magnet+=v },
+      
+    { id: 'lightning', icon: '🌩️', title: '雷撃強化', val: 1, unit: 'Lv', desc: v=>`雷撃レベル +${v}`, 
+      func: (v)=> stats.lightning+=v },
+      
+    { id: 'rate', icon: '⚡', title: 'クールダウン', val: 5, unit: '%', desc: v=>`攻撃間隔 -${v}%`, 
+      func: (v)=> stats.rate = Math.max(2, stats.rate*(1-v/100)) },
+
+    // --- 条件付きアイテム (condition関数がtrueの時のみ出現) ---
+    
+    // 回復系 (レアと通常でIDを分ける必要はなく、ロジックで分岐も可能ですが、今回はシンプルに定義)
+    { id: 'regen', icon: '💖', title: 'リジェネ', val: 2, unit: '', desc: v=>`HP回復 +${v}/s`, 
+      func: (v)=> stats.regen+=v, weight: 0.8 }, // weightで出現率調整も可能
+      
+    { id: 'drone', icon: '🛰️', title: 'ビット増設', val: 1, unit: '機', desc: v=>`ビット数 +${v}`, 
+      func: (v)=> stats.drones+=v, 
+      condition: ()=> player.class === 'Sniper' || stats.drones > 0 },
+      
+    { id: 'missile', icon: '🚀', title: 'ミサイル', val: 1, unit: 'Lv', desc: v=>`発射数/頻度 +${v}`, 
+      func: (v)=> stats.missile+=v, 
+      condition: ()=> player.class === 'Assault' || stats.missile > 0 },
+      
+    { id: 'chakram', icon: '🥏', title: 'チャクラム', val: 1, unit: '個', desc: v=>`同時投擲数 +${v}`, 
+      func: (v)=> stats.chakram+=v, 
+      condition: ()=> player.class === 'Trickster' || stats.chakram > 0 },
+      
+    // ホーミング: Melee以外、または既に持っている場合
+    { id: 'homing', icon: '👁️', title: 'ホーミング', val: 1, unit: 'Lv', desc: v=>`追尾性能 +${v}`, 
+      func: (v)=> stats.homing+=v, 
+      condition: ()=> player.class !== 'Melee' || stats.homing > 0 },
+
+    // 範囲拡大: 特定クラス用
+    { id: 'area', icon: '💥', title: '攻撃範囲', val: 10, unit: '%', desc: v=>`サイズ +${v}%`, 
+      func: (v)=> { stats.areaScale += v/100; if(player.class==='Melee') player.size*=1.05; }, 
+      condition: ()=> ['Melee','Guardian','Alchemist'].includes(player.class) },
+      
+    // 弾速: 近接以外
+    { id: 'bullet_speed', icon: '🚅', title: '弾速', val: 10, unit: '%', desc: v=>`弾の速さ +${v}%`, 
+      func: (v)=> stats.bulletSpeed*=(1+v/100), 
+      condition: ()=> !['Melee','Samurai','Guardian'].includes(player.class) },
+      
+    // 貫通: 射撃系クラス
+    { id: 'pierce', icon: '🏹', title: '貫通力', val: 1, unit: '', desc: v=>`貫通数 +${v}`, 
+      func: (v)=> stats.pierce+=v, 
+      condition: ()=> ['Sniper','Assault','Trickster','Tempest','Novice'].includes(player.class) },
+
+    // 持続時間: 設置系スキル持ち
+    { id: 'duration', icon: '⏳', title: '効果時間', val: 15, unit: '%', desc: v=>`持続時間 +${v}%`, 
+      func: (v)=> stats.duration+=v/100, 
+      condition: ()=> player.class==='Alchemist' || player.class==='Guardian' || stats.clusterMine || stats.poison>0 },
+
+    // 防御力
+    { id: 'armor', icon: '🛡️', title: '装甲強化', val: 2, unit: '', desc: v=>`被ダメージ -${v}`, 
+      func: (v)=> stats.armor+=v, 
+      condition: ()=> ['Melee','Samurai','Guardian'].includes(player.class) },
+
+    // ノックバック
+    { id: 'knockback', icon: '🥊', title: '衝撃力', val: 1, unit: '', desc: v=>`ノックバック +${v}`, 
+      func: (v)=> stats.knockback+=v, 
+      condition: ()=> ['Melee','Sniper','Assault','Novice'].includes(player.class) },
+
+    // マルチショット系
+    { id: 'multi_blade', icon: '⚔️', title: '回転刃+', val: 1, unit: '', desc: v=>`回転刃の数 +${v}`, 
+      func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Melee' },
+      
+    { id: 'multi_wave', icon: '🌊', title: '衝撃波+', val: 1, unit: '', desc: v=>`衝撃波の数 +${v}`, 
+      func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Samurai' },
+      
+    { id: 'multi_shot', icon: '🔫', title: 'マルチショット', val: 1, unit: '', desc: v=>`同時発射数 +${v}`, 
+      func: (v)=> stats.multi+=v, 
+      condition: ()=> !['Melee','Samurai'].includes(player.class) }
+];
+
+// --- 禁断の力（Milestone）の定義 ---
+// classes: nullなら全員、['Sniper']ならスナイパー専用
+// isOwned: trueを返すとリストに出現しなくなる（取得済みチェック）
+const MILESTONE_DATA = [
+    // === 共通 (Common) ===
+    { title: "⚡ オメガ・レーザー", desc: "3秒ごとに画面を薙ぎ払う極太レーザーを発射。", 
+      classes: null, isOwned: ()=>stats.omegaLaser, f:()=>{stats.omegaLaser=true;} },
+    { title: "❄️ アブソリュート・ゼロ", desc: "周囲の敵を凍結させ、長時間停止させるオーラ。", 
+      classes: null, isOwned: ()=>stats.absoluteZero, f:()=>{stats.absoluteZero=true;} },
+    { title: "💀 ネクロマンサー", desc: "敵撃破時に、敵を追尾する怨霊弾を召喚する。", 
+      classes: null, isOwned: ()=>stats.necromancer, f:()=>{stats.necromancer=true;} },
+    { title: "🩸 血の契約", desc: "最大HPが1になる代わりに、攻撃力が5倍になる。", 
+      classes: null, isOwned: ()=>player.maxHp===1, f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;} },
+    { title: "🛡️ ゴッドモード", desc: "被弾時の無敵時間が3倍になる。", 
+      classes: null, isOwned: ()=>player.invincibleMax>=60, f:()=>{player.invincibleMax=60;} },
+    { title: "👥 ドッペルゲンガー", desc: "背後に分身が出現し、反対方向へ同時に攻撃する。", 
+      classes: null, isOwned: ()=>stats.doppelganger, f:()=>{stats.doppelganger=true;} },
+    { title: "⏳ ザ・ワールド", desc: "ダメージを受けると時が止まり、回避のチャンスを得る(CDあり)。", 
+      classes: null, isOwned: ()=>stats.timeStop, f:()=>{stats.timeStop=true;} },
+    { title: "🧬 ジャイアントキラー", desc: "攻撃時、敵の最大HPの2%分の追加ダメージを与える。", 
+      classes: null, isOwned: ()=>false, f:()=>{stats.hpDamage += 0.02;} }, // 重複可
+    { title: "🎯 フェイタル・クリティカル", desc: "クリティカルダメージ倍率 +50%", 
+      classes: null, isOwned: ()=>stats.critMult >= 10.0, f:()=>{stats.critMult += 0.5;} },
+    { title: "🩸 鮮血の爪", desc: "失ったHP割合に応じて攻撃力が上昇する (背水)", 
+      classes: null, isOwned: ()=>stats.lowHpDmg, f:()=>{stats.lowHpDmg = true;} },
+
+    // === アサルト (Assault) ===
+    { title: "💣 爆裂弾", desc: "全ての通常弾が着弾時に爆発するようになる。", 
+      classes: ['Assault'], isOwned: ()=>stats.shotExplode, f:()=>{stats.shotExplode=true;} },
+    { title: "↩️ 跳弾", desc: "弾が画面端で跳ね返るようになる。", 
+      classes: ['Assault'], isOwned: ()=>stats.shotBounce, f:()=>{stats.shotBounce=true;} },
+    { title: "👯 ダブルトリガー", desc: "50%の確率で、一度に2発の弾を発射する。", 
+      classes: ['Assault'], isOwned: ()=>stats.doubleShot, f:()=>{stats.doubleShot=true;} },
+    { title: "🚀 ミサイル祭", desc: "射撃時に20%の確率で追加ミサイルを発射。", 
+      classes: ['Assault'], isOwned: ()=>stats.missileChance>=0.2, f:()=>{stats.missileChance=0.2;} },
+    { title: "♾️ 無限マガジン", desc: "一度の発射数+3。リロード時間がゼロになる。", 
+      classes: ['Assault'], isOwned: ()=>stats.infiniteMag, f:()=>{stats.infiniteMag=true;} },
+    { title: "⚙️ ガトリング", desc: "連射速度が限界突破し、凄まじい弾幕を張る。", 
+      classes: ['Assault'], isOwned: ()=>stats.gatling, f:()=>{stats.rate=Math.max(1, stats.rate-10); stats.gatling=true;} },
+    { title: "🔥 オーバーヒート", desc: "撃ち続けると連射速度が上がるが、自分が僅かにダメージを受ける。", 
+      classes: ['Assault'], isOwned: ()=>stats.overheat, f:()=>{stats.overheat=true;} },
+    { title: "🦶 リコイルジャンプ", desc: "射撃の反動で後ろに下がるようになり、機動力が上がる。", 
+      classes: ['Assault'], isOwned: ()=>stats.recoilJump, f:()=>{stats.recoilJump=true;} },
+
+    // === ヴァンガード (Melee) ===
+    { title: "🦍 タイタン", desc: "HP2倍、サイズ1.5倍。攻撃判定も巨大化。", 
+      classes: ['Melee'], isOwned: ()=>stats.titan, f:()=>{player.maxHp*=2; player.hp*=2; player.size*=1.5; stats.titan=true;} },
+    { title: "⚫ ブラックホール", desc: "オーラが敵を強力に吸い寄せるようになる。", 
+      classes: ['Melee'], isOwned: ()=>stats.blackHole, f:()=>{stats.blackHole=true;} },
+    { title: "⚔️ ブレードストーム", desc: "回転刃の枚数が+4枚追加される。", 
+      classes: ['Melee'], isOwned: ()=>stats.bladeStorm, f:()=>{stats.bladeStorm=true;} },
+    { title: "🌎 アースクエイク", desc: "2秒ごとに画面全体攻撃を行い、敵を気絶させる。", 
+      classes: ['Melee'], isOwned: ()=>stats.earthquake, f:()=>{stats.earthquake=true;} },
+    { title: "🌵 スパイクリフレクト", desc: "敵接触時のダメージを2倍にして反射する。", 
+      classes: ['Melee'], isOwned: ()=>stats.spikeReflect, f:()=>{stats.spikeReflect=true;} },
+    { title: "🧛 ブラッドラスト", desc: "敵を倒すとHPが1%回復する。", 
+      classes: ['Melee'], isOwned: ()=>stats.bloodLust, f:()=>{stats.bloodLust=true;} },
+    { title: "🤺 パリィ", desc: "15%の確率でダメージを無効化し、周囲を吹き飛ばす。", 
+      classes: ['Melee'], isOwned: ()=>stats.parry, f:()=>{stats.parry=true;} },
+    { title: "🌊 ソードウェーブ", desc: "回転刃から定期的に真空波が飛び、遠くの敵を斬る。", 
+      classes: ['Melee'], isOwned: ()=>stats.swordWave, f:()=>{stats.swordWave=true;} },
+
+    // === スナイパー (Sniper) ===
+    { title: "🚅 レールガン", desc: "弾速2倍、サイズ2倍。全ての敵を貫通する。", 
+      classes: ['Sniper'], isOwned: ()=>stats.railgun, f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;} },
+    { title: "🔪 処刑人", desc: "HP30%以下の敵に攻撃すると即死させる。", 
+      classes: ['Sniper'], isOwned: ()=>stats.execute, f:()=>{stats.execute=true;} },
+    { title: "👁️ デッドアイ", desc: "全ての攻撃がクリティカル(3倍ダメージ)になる。", 
+      classes: ['Sniper'], isOwned: ()=>stats.deadeye, f:()=>{stats.deadeye=true;} },
+    { title: "⚡ エレクトロフェンス", desc: "周囲の敵を麻痺させ、弾き飛ばす電気柵を展開。", 
+      classes: ['Sniper'], isOwned: ()=>stats.electroFence, f:()=>{stats.electroFence=true;} },
+    { title: "💥 チェーンバースト", desc: "敵を倒すと連鎖爆発が発生し、周囲を巻き込む。", 
+      classes: ['Sniper'], isOwned: ()=>stats.chainBurst, f:()=>{stats.chainBurst=true;} },
+    { title: "☄️ 天罰", desc: "ランダムな位置に強力な衛星レーザーが降り注ぐ。", 
+      classes: ['Sniper'], isOwned: ()=>stats.orbital, f:()=>{stats.orbital=true;} },
+    { title: "👻 ファントムバレット", desc: "壁や敵をすり抜け、画面外から戻ってくる魔法の弾丸。", 
+      classes: ['Sniper'], isOwned: ()=>stats.phantom, f:()=>{stats.phantom=true; stats.ghostShot=true;} },
+    { title: "🎯 サーマルスコープ", desc: "画面外の敵にもホーミングが適用され、クリティカル率が上がる。", 
+      classes: ['Sniper'], isOwned: ()=>stats.thermal, f:()=>{stats.thermal=true; stats.homing+=2;} },
+
+    // === ガーディアン (Guardian) ===
+    { title: "🏗️ セントリーシステム", desc: "10秒ごとに自動攻撃タレットを設置する。", 
+      classes: ['Guardian'], isOwned: ()=>stats.sentrySystem, f:()=>{stats.sentrySystem=true; spawnSentry();} },
+    { title: "🏯 シージモード", desc: "立ち止まっている間、攻撃速度とダメージが2倍。", 
+      classes: ['Guardian'], isOwned: ()=>stats.siegeMode, f:()=>{stats.siegeMode=true;} },
+    { title: "⚡ リアクティブアーマー", desc: "ダメージを受けると、周囲に電撃カウンターを放つ。", 
+      classes: ['Guardian'], isOwned: ()=>stats.reactiveArmor, f:()=>{stats.reactiveArmor=true;} },
+    { title: "❤️ ナノマシン修復", desc: "HPが30%以下になると超高速で自然回復する。", 
+      classes: ['Guardian'], isOwned: ()=>stats.nanoRepair, f:()=>{stats.nanoRepair=true;} },
+    { title: "💣 クラスターマイン", desc: "ダッシュ時に大量の地雷をばら撒く。", 
+      classes: ['Guardian'], isOwned: ()=>stats.clusterMine, f:()=>{stats.clusterMine=true;} },
+    { title: "🛡️ フォースフィールド", desc: "定期的にダメージを完全無効化するバリアを展開。", 
+      classes: ['Guardian'], isOwned: ()=>stats.forceField, f:()=>{stats.forceField=true;} },
+    { title: "🚁 護衛ドローン", desc: "プレイヤーの周囲を旋回し、近づく敵を迎撃するドローンを配備。", 
+      classes: ['Guardian'], isOwned: ()=>stats.guardDrone, f:()=>{stats.guardDrone=true;} },
+    { title: "🏰 移動要塞", desc: "移動速度が半減する代わりに、防御力とHPが大幅に上昇する。", 
+      classes: ['Guardian'], isOwned: ()=>stats.armor>=25, f:()=>{stats.spd*=0.5; stats.armor+=10; player.maxHp+=500; player.hp+=500;} },
+
+    // === アルケミスト (Alchemist) ===
+    { title: "☣️ パンデミック", desc: "毒を受けた敵が死ぬと、その場に毒ガスを発生させる。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.pandemic, f:()=>{stats.pandemic=true;} },
+    { title: "🧪 神経毒", desc: "毒ガスの範囲内にいる敵の移動速度を大幅に下げる。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.neurotoxin, f:()=>{stats.neurotoxin=true;} },
+    { title: "🧊 コールドフラスコ", desc: "攻撃時、10%の確率で敵を凍結させる。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.coldFlask, f:()=>{stats.coldFlask=true;} },
+    { title: "🤢 腐食液", desc: "毒ガスのダメージ間隔が半分になり、火力が倍増する。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.corrosion, f:()=>{stats.corrosion=true;} },
+    { title: "💊 違法な興奮剤", desc: "移動速度+20、連射速度+20%。ただし被ダメージが1.5倍になる。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.drugMode, f:()=>{stats.spd+=20; stats.rate-=5; stats.armor-=5; stats.drugMode=true;} },
+    { title: "🌧️ アシッドレイン", desc: "3秒ごとにランダムな場所に強力な酸の雨（毒沼）を降らせる。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.acidRain, f:()=>{stats.acidRain=true;} },
+    { title: "🧟 ゾンビウイルス", desc: "倒した敵が一定確率で味方のミニオンとして復活する。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.zombieVirus, f:()=>{stats.zombieVirus=true;} },
+    { title: "⚗️ ケミカル・バーン", desc: "毒状態の敵に攻撃すると、追加で爆発ダメージを与える。", 
+      classes: ['Alchemist'], isOwned: ()=>stats.chemicalBurn, f:()=>{stats.chemicalBurn=true;} },
+
+    // === トリックスター (Trickster) ===
+    { title: "🎰 スロットマシン", desc: "5秒ごとにランダムなステータスが劇的に変化する。", 
+      classes: ['Trickster'], isOwned: ()=>stats.slotMachine, f:()=>{stats.slotMachine=true;} },
+    { title: "🃏 ジョーカー", desc: "HPが減るほど、クリティカル率と回避率が超上昇する。", 
+      classes: ['Trickster'], isOwned: ()=>stats.joker, f:()=>{stats.joker=true;} },
+    { title: "🎲 ロシアンルーレット", desc: "1/6の確率でダメージが10倍になるが、たまに不発になる。", 
+      classes: ['Trickster'], isOwned: ()=>stats.russianRoulette, f:()=>{stats.russianRoulette=true;} },
+    { title: "✨ マジックカード", desc: "弾が敵を貫通し、壁で跳ね返るようになる。", 
+      classes: ['Trickster'], isOwned: ()=>stats.shotBounce, f:()=>{stats.pierce+=2; stats.shotBounce=true;} },
+    { title: "💰 ジャックポット", desc: "敵を倒した時、稀に大量の経験値オーブが爆発四散する。", 
+      classes: ['Trickster'], isOwned: ()=>stats.jackpot, f:()=>{stats.jackpot=true;} },
+    { title: "🌀 カオス弾", desc: "弾が不規則に蛇行し、サイズもバラバラになる。", 
+      classes: ['Trickster'], isOwned: ()=>stats.chaosShot, f:()=>{stats.chaosShot=true;} },
+    { title: "🎲 ラッキーセブン", desc: "7発ごとの攻撃が必ずクリティカル＆範囲攻撃になる。", 
+      classes: ['Trickster'], isOwned: ()=>stats.luckySeven, f:()=>{stats.luckySeven=true;} },
+    { title: "🃏 ワイルドカード", desc: "他のクラスの禁断の力（スキル）がランダムで1つ発動する。", 
+      classes: ['Trickster'], isOwned: ()=>stats.wildCard, f:()=>{stats.wildCard=true;} }
+];
+
+// --- 第1次進化 (Level 5) ---
+const EVO_DATA = [
+    { id: 'Samurai', icon: '⚔️', title: '侍・剣豪', desc: '一閃: 射程は短いが、前方の敵を一瞬で葬る「斬撃」を放つ。', 
+      color: '#ffffff', func: ()=>{
+        stats.samuraiMode = true; stats.rate = 20; stats.dmg = 300; 
+        stats.spd += 5; stats.pierce = 999; stats.knockback = 0;
+      }},
+    { id: 'Tempest', icon: '⚡', title: '雷帝', desc: '天変地異: 常に周囲に落雷が発生し、攻撃弾も連鎖雷撃を引き起こす。', 
+      color: '#8A2BE2', func: ()=>{
+        stats.tempestMode = true; stats.rate = 8; stats.dmg = 15; 
+        stats.lightning = 3; stats.bulletSpeed = 25;
+      }},
+    { id: 'Assault', icon: '🔫', title: 'アサルト', desc: '連射特化: マシンガン(連射・2発・貫通)解禁', 
+      color: '#00ffff', func: ()=>{
+        stats.rate=4; stats.dmg+=10; stats.multi=1; stats.pierce=1;
+      }},
+    { id: 'Melee', icon: '🛡️', title: 'ヴァンガード', desc: '近接: 超・広範囲 & HP+500/リジェネ+10', 
+      color: '#ff3333', func: ()=>{
+        stats.aura=true; stats.auraRange=180; stats.spd+=4; 
+        player.maxHp+=500; player.hp+=500; stats.regen+=10;
+      }},
+    { id: 'Sniper', icon: '🔭', title: 'スナイパー', desc: '遠距離: 💥破片 & 🔙ノックバック', 
+      color: '#ffff00', func: ()=>{
+        stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=0;
+        stats.drones+=1; stats.shrapnel=true; stats.knockback=1;
+      }},
+    { id: 'Guardian', icon: '🧱', title: 'ガーディアン', desc: '機動要塞: タレット8基展開・反射装甲・高耐久', 
+      color: '#00ff88', func: ()=>{
+        stats.armor+=20; player.maxHp+=1500; player.hp=player.maxHp; 
+        stats.spd-=0.5; stats.magnet+=200; stats.sentryRate=2.5; 
+        stats.sentryMax=6; stats.sentrySystem=true; spawnSentry(); stats.spikeReflect=true;
+      }},
+    { id: 'Alchemist', icon: '⚗️', title: 'アルケミスト', desc: '毒物劇物: 毒ガス・凍結・弱体化をバラ撒く', 
+      color: '#aa00ff', func: ()=>{
+        stats.poison = 5; stats.dmg *= 0.7; stats.rate *= 0.9; 
+        stats.alchemistMode = true; stats.neurotoxin = false; stats.pandemic = false;
+      }},
+    { id: 'Trickster', icon: '🃏', title: 'トリックスター', desc: '運否天賦: 弾の性能が毎回ランダムに変化する。', 
+      color: '#ff00ff', func: ()=>{
+        stats.rate = 5; stats.dmg = 18; stats.tricksterMode = true; 
+        stats.slotMachine = false; stats.joker = false;
+      }}
+];
+
+// --- 第2次進化 (Level 40) ---
+// parent: このクラスから進化できる（親クラスID）
+const SECOND_EVO_DATA = [
+    // Samurai
+    { parent: 'Samurai', id: 'Ashura', icon: '👹', title: '阿修羅', desc: '乱舞: 攻撃速度が極限まで上昇し、目にも止まらぬ連続斬りを繰り出す。', 
+      color: '#ff0033', func: ()=>{ stats.rate = 15; stats.dmg *= 0.8; } },
+    { parent: 'Samurai', id: 'Kensei', icon: '🌀', title: '剣聖', desc: '真空波: 斬撃と同時に、遠くまで飛ぶ鋭い衝撃波を放つ。', 
+      color: '#ccccff', func: ()=>{ stats.swordWave = true; stats.dmg *= 1.5; } },
+
+    // Tempest
+    { parent: 'Tempest', id: 'Thor', icon: '⛈️', title: 'トール', desc: '雷神: 落雷の同時攻撃数が劇的に増え、画面全体を焼き払う。', 
+      color: '#ffff00', func: ()=>{ stats.lightning += 5; stats.lightningDmgMult = 2.0; } },
+    { parent: 'Tempest', id: 'PlasmaLord', icon: '⚛️', title: 'プラズマロード', desc: '球状稲妻: 弾が「超低速で進みながら周囲を感電させる球体」に変化する。', 
+      color: '#aa00ff', func: ()=>{ stats.bulletSpeed = 3; stats.pierce = 999; stats.dmg *= 2.0; player.size = 20; } },
+
+    // Alchemist
+    { parent: 'Alchemist', id: 'NecroToxin', icon: '🧟', title: 'ネクロトキシコロジスト', desc: '死者蘇生: 毒で倒した敵が高確率で味方のゾンビとして蘇る。', 
+      color: '#00ff00', func: ()=>{ stats.zombieVirus = true; } },
+    { parent: 'Alchemist', id: 'MadScientist', icon: '💥', title: 'マッドサイエンティスト', desc: '連鎖爆発: 毒ガスが引火性になり、攻撃を当てると大爆発を起こす。', 
+      color: '#ff00ff', func: ()=>{ stats.chemicalBurn = true; stats.dmg *= 1.5; } },
+
+    // Trickster
+    { parent: 'Trickster', id: 'Gambler', icon: '🎰', title: 'ギャンブラー', desc: 'ジャックポット: 敵撃破時の経験値獲得量が稀に100倍になる。', 
+      color: '#ffd700', func: ()=>{ stats.jackpotChance = 0.1; } },
+    { parent: 'Trickster', id: 'JokerMaster', icon: '🃏', title: 'ジョーカー', desc: 'ワイルドカード: 全クラスの最強スキルがランダムで発動する。', 
+      color: '#ffffff', func: ()=>{ stats.wildCard = true; } },
+
+    // Assault
+    { parent: 'Assault', id: 'ClusterStriker', icon: '💥', title: 'クラスター・ストライカー', desc: '爆発特化: 着弾時に「子爆弾」が周囲に飛び散り、誘爆連鎖を引き起こす。', 
+      color: '#ff8800', func: ()=>{ stats.clusterStriker = true; stats.dmg *= 1.2; } },
+    { parent: 'Assault', id: 'BulletStorm', icon: '🌪️', title: 'バレット・ストーム', desc: '弾幕特化: 攻撃中、連射速度と拡散範囲が無限に上昇する。画面を埋め尽くせ！', 
+      color: '#0088ff', func: ()=>{ stats.bulletStorm = true; } },
+
+    // Melee
+    { parent: 'Melee', id: 'FlyingSwords', icon: '🗡️', title: '御剣', desc: '遠隔斬撃: 回転刃がプレイヤーから離れ、自律して敵を追尾・切り刻む。', 
+      color: '#ff0066', func: ()=>{ /* ロジック側で処理 */ } },
+    { parent: 'Melee', id: 'SunCrusher', icon: '☀️', title: 'サン・クラッシャー', desc: '灼熱領域: 停止中にエネルギー充填。移動開始時に超広範囲の爆熱波を放つ。', 
+      color: '#ffd700', func: ()=>{ stats.auraRange += 50; } },
+
+    // Sniper
+    { parent: 'Sniper', id: 'DimensionWalker', icon: '🌌', title: 'ディメンション・ウォーカー', desc: '次元干渉: 弾が画面端をループする度、巨大化し威力が倍増する。', 
+      color: '#88ff88', func: ()=>{ stats.ghostShot = true; stats.infinitePierce = true; } },
+    { parent: 'Sniper', id: 'PrismShooter', icon: '💎', title: 'プリズム・シューター', desc: '幾何学反射: 弾が敵や壁に当たるたびに2つに分裂し、レーザー網を形成する。', 
+      color: '#ff00ff', func: ()=>{ stats.prismSplit = true; stats.dmg *= 0.8; } },
+
+    // Guardian
+    { parent: 'Guardian', id: 'TeslaEngineer', icon: '⚡', title: 'テスラ・エンジニア', desc: '電気柵: 設置したタレット同士が「高圧電流」で接続され、触れた敵を焼き尽くす。', 
+      color: '#00ffcc', func: ()=>{ stats.teslaGrid = true; stats.sentryMax = 12; } },
+    { parent: 'Guardian', id: 'EarthShaker', icon: '🦍', title: 'アース・シェイカー', desc: '重戦車: 巨大化し、歩くだけで足元に衝撃波が発生。敵を弾き飛ばし粉砕する。', 
+      color: '#885500', func: ()=>{ stats.isEarthShaker = true; player.size = 30; player.maxHp += 1000; player.hp += 1000; stats.armor += 10; } }
+];
 
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if(isMobile) {
@@ -1949,65 +2283,71 @@ function spawnEnemy(mode, time) {
 }
 
 function createEnemy(type, x, y) {
-    let e = { id: Math.random(), x: x, y: y, flash: 0, type: 'mob', frozen: 0, knockbackTimer: 0 };
+    // 1. 定義データを取得（該当がなければnormalを使う）
+    const data = ENEMY_DATA[type] || ENEMY_DATA['normal'];
+
+    // 2. 基本オブジェクト作成
+    let e = { 
+        id: Math.random(), 
+        x: x, 
+        y: y, 
+        flash: 0, 
+        type: (type === 'boss' || type === 'golem') ? type : 'mob', // bossとgolem以外はmob扱い
+        ai: data.ai,
+        frozen: 0, 
+        knockbackTimer: 0 
+    };
     
-    
+    // 3. HP計算（レベル補正）
     let hpMult = Math.pow(1.10, level - 1); 
     if(singularityMode) hpMult *= 2.0;
 
-    // ▼▼▼ ここを修正（大きいレベルから順に判定します） ▼▼▼
+    // プレイヤーが強い場合の敵強化補正
     if (player.hp >= player.maxHp * 0.9) {
-        if (level >= 60) {
-            hpMult *= 8.0; // Lv50以上なら10倍！
-        } else if (level >= 40) {
-            hpMult *= 5.0;  // Lv40～49なら5倍
-        }
+        if (level >= 60) hpMult *= 8.0;
+        else if (level >= 40) hpMult *= 5.0;
     }
-    // ▲▲▲ 修正終わり ▲▲▲
 
+    e.hp = data.baseHp * hpMult;
+    
+    // 4. サイズと色
+    e.size = data.size;
+    e.color = data.color;
+
+    // 5. 速度計算
+    // 基本速度 + レベル補正 + ランダム要素(通常敵のみ)
+    let spdBase = data.baseSpeed + (level * 0.01 || 0); // undefined対策
+    if (type === 'normal') spdBase += Math.random(); // 通常敵は速度バラつきあり
+    
+    // 速度倍率（ゴーレムの0.3倍などを適用）
+    let spdMult = (data.speedMult !== undefined) ? data.speedMult : 1.0;
+    e.speed = spdBase * spdMult;
+
+    // 6. ダメージ計算（定義がなければ自動計算）
+    e.dmg = 10 + Math.floor(level * 1.5);
+
+    // 7. 特殊処理：ボス (Boss Specific Logic)
     if(type === 'boss') { 
-        // 基本ステータス
-        e.hp = 3000 * hpMult; 
-        e.size = 90; e.color = '#cc0000'; e.ai='boss'; e.type='boss'; 
         e.dmg = 50 + (level * 2);
         
-        // --- ★修正: ボスの後半強化ロジック (HPと速度を強化) ---
-        // 基本倍率: サイクルごとに +50%
+        // サイクルの強化ロジック
         let cycleMult = 1 + (bossCycleCounter * 0.5);
-        
-        // 後半(3サイクル=15分以降)の追加補正: 指数関数的にHPと速度を上げる
         if(bossCycleCounter >= 3) {
-            let lateGameFactor = bossCycleCounter - 2; // 1, 2, 3...
-            cycleMult *= Math.pow(1.15, lateGameFactor); // サイクル毎にさらに1.15倍乗算
-            
-            // 速度も上げる (上限あり)
-            let baseSpeed = 2.5 + (level * 0.02);
-            e.speed = Math.min(6.0, baseSpeed + (lateGameFactor * 0.5)); 
-        } else {
-            e.speed = 2.5 + (level * 0.02);
+            let lateGameFactor = bossCycleCounter - 2;
+            cycleMult *= Math.pow(1.15, lateGameFactor);
+            // 速度上限付き強化
+            e.speed = Math.min(6.0, e.speed + (lateGameFactor * 0.5)); 
         }
-
         e.hp *= cycleMult;
-        e.maxHp = e.hp;
     }
-    else if(type === 'golem') {
-        e.hp = 450 * hpMult; e.maxHp = e.hp; 
-        e.size = 25; e.color = '#2F4F4F'; 
-        e.speed = (2.0 + (level * 0.01)) * 0.3; 
-        e.ai = 'normal'; e.type = 'golem';
-    }
-    else if(type === 'dasher') { e.hp = 25 * hpMult; e.maxHp = e.hp; e.size = 18; e.color = '#ff3333'; e.speed = 2.5 + (level * 0.02); e.ai='dasher'; e.state='chase'; }
-    else if(type === 'splitter') { e.hp = 20 * hpMult; e.maxHp = e.hp; e.size = 20; e.color = '#ff3333'; e.speed = 1.2 + (level * 0.01); e.ai='splitter'; }
-    else if(type === 'bat') { e.hp = 8 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#ff3333'; e.speed = 5.0 + (level * 0.03); e.ai='bat'; }
-    else if(type === 'shooter') { e.hp = 22 * hpMult; e.maxHp = e.hp; e.size = 15; e.color = '#ff3333'; e.speed = 1.8 + (level * 0.01); e.ai='shooter'; }
-    else if(type === 'tank') { e.hp = 80 * hpMult; e.maxHp = e.hp; e.size = 24; e.color = '#ff3333'; e.speed = 1.0 + (level * 0.01); e.ai='tank'; }
-    else if(type === 'minion') { e.hp = 8 * hpMult; e.maxHp = e.hp; e.size = 10; e.color = '#ff3333'; e.speed = 3.0 + (level * 0.02); e.ai='normal'; }
-    else { e.hp = 15 * hpMult; e.maxHp = e.hp; e.size = 14; e.color = '#ff3333'; e.speed = 2.0 + (level * 0.01) + Math.random(); e.ai='normal'; }
-    
-    if(!e.dmg) e.dmg = 10 + Math.floor(level * 1.5);
-    
-    if(singularityMode) { e.color = '#000000'; e.speed *= 1.2; }
 
+    // 8. シンギュラリティモード補正
+    if(singularityMode) { 
+        e.color = '#000000'; 
+        e.speed *= 1.2; 
+    }
+
+    e.maxHp = e.hp; // 最大HP確定
     enemies.push(e);
 }
 
@@ -2153,307 +2493,64 @@ function addExp(v, silent) {
     document.getElementById('xp-fill').style.width = Math.min(100, (exp/nextExp*100))+'%';
 }
 
-// ★ New Second Evolution Function
-function showSecondEvo() {
+function showMilestone() {
     gameActive = false;
-    let m = document.getElementById('menu-overlay'); let c = document.getElementById('card-area');
-    c.innerHTML = ''; m.style.display = 'flex';
-    document.querySelector('#menu-title').innerText = "第2次進化 (Class Evolution)";
+    Sound.play('milestone');
+    let m = document.getElementById('menu-overlay'); 
+    let c = document.getElementById('card-area');
+    c.innerHTML = ''; 
+    m.style.display = 'flex';
+    document.querySelector('#menu-title').innerText = "禁断の力 (Lv"+level+")";
 
-    let evos = [];
+    // 1. 候補リストの作成
+    // (クラスが一致、または全クラス共通) かつ (まだ持っていない)
+    let pool = MILESTONE_DATA.filter(item => {
+        let classMatch = !item.classes || item.classes.includes(player.class);
+        let notOwned = !item.isOwned || !item.isOwned();
+        return classMatch && notOwned;
+    });
 
-    // --- ⚔️ 侍 (Samurai) の進化 ---
-    if(player.class === 'Samurai') {
-        evos = [
-            {t:"👹 阿修羅 (Ashura)", d:"乱舞: 攻撃速度が極限まで上昇し、目にも止まらぬ連続斬りを繰り出す。", f:()=>{
-                player.subClass = 'Ashura';
-                stats.rate = 15; // 攻撃間隔を短縮（高速化）
-                stats.dmg *= 0.8; // 単発威力は少し下がる
-                player.color = "#ff0033"; // 深紅
-            }},
-            {t:"🌀 剣聖 (Kensei)", d:"真空波: 斬撃と同時に、遠くまで飛ぶ鋭い衝撃波を放つ。", f:()=>{
-                player.subClass = 'Kensei';
-                stats.swordWave = true; // 衝撃波フラグ
-                stats.dmg *= 1.5; // 威力アップ
-                player.color = "#ccccff"; // 青白
-            }}
-        ];
-    }
-    // --- ⚡ 雷帝 (Tempest) の進化 ---
-    else if(player.class === 'Tempest') {
-        evos = [
-            {t:"⛈️ トール (Thor)", d:"雷神: 落雷の同時攻撃数が劇的に増え、画面全体を焼き払う。", f:()=>{
-                player.subClass = 'Thor';
-                stats.lightning += 5; // 同時落雷数+5
-                stats.lightningDmgMult = 2.0; // 雷ダメージ倍増（要ロジック対応、今回は簡易的にdmg依存）
-                player.color = "#ffff00"; 
-            }},
-            {t:"⚛️ プラズマロード (Plasma)", d:"球状稲妻: 弾が「超低速で進みながら周囲を感電させる球体」に変化する。", f:()=>{
-                player.subClass = 'PlasmaLord';
-                stats.bulletSpeed = 3; // 超低速
-                stats.pierce = 999;    // 無限貫通
-                stats.dmg *= 2.0;      // 高威力
-                player.size = 20;
-                player.color = "#aa00ff";
-            }}
-        ];
-    }
-    // --- ⚗️ アルケミスト (Alchemist) の進化 ---
-    else if(player.class === 'Alchemist') {
-        evos = [
-            {t:"🧟 ネクロトキシコロジスト", d:"死者蘇生: 毒で倒した敵が高確率で味方のゾンビとして蘇る。", f:()=>{
-                player.subClass = 'NecroToxin';
-                stats.zombieVirus = true; 
-                player.color = "#00ff00";
-            }},
-            {t:"💥 マッドサイエンティスト", d:"連鎖爆発: 毒ガスが引火性になり、攻撃を当てると大爆発を起こす。", f:()=>{
-                player.subClass = 'MadScientist';
-                stats.chemicalBurn = true;
-                stats.dmg *= 1.5;
-                player.color = "#ff00ff";
-            }}
-        ];
-    }
-    // --- 🃏 トリックスター (Trickster) の進化 ---
-    else if(player.class === 'Trickster') {
-        evos = [
-            {t:"🎰 ギャンブラー", d:"ジャックポット: 敵撃破時の経験値獲得量が稀に100倍になる。", f:()=>{
-                player.subClass = 'Gambler';
-                stats.jackpotChance = 0.1; // 確率アップ
-                player.color = "#ffd700";
-            }},
-            {t:"🃏 ジョーカー", d:"ワイルドカード: 全クラスの最強スキルがランダムで発動する。", f:()=>{
-                player.subClass = 'JokerMaster';
-                stats.wildCard = true;
-                player.color = "#ffffff";
-            }}
-        ];
-    }
-    // --- 既存クラス (Assault, Melee, Sniper, Guardian) ---
-    else if(player.class === 'Assault') {
-        evos = [
-            {t:"💥 クラスター・ストライカー", d:"爆発特化: 着弾時に「子爆弾」が周囲に飛び散り、誘爆連鎖を引き起こす。", f:()=>{
-                player.subClass = 'ClusterStriker';
-                stats.clusterStriker = true;
-                stats.dmg *= 1.2;
-                player.color = "#ff8800";
-            }},
-            {t:"🌪️ バレット・ストーム", d:"弾幕特化: 攻撃中、連射速度と拡散範囲が無限に上昇する。画面を埋め尽くせ！", f:()=>{
-                player.subClass = 'BulletStorm';
-                stats.bulletStorm = true;
-                player.color = "#0088ff";
-            }}
-        ];
-    } else if(player.class === 'Melee') {
-        evos = [
-            {t:"🗡️ 御剣 (Flying Swords)", d:"遠隔斬撃: 回転刃がプレイヤーから離れ、自律して敵を追尾・切り刻む。", f:()=>{
-                player.subClass = 'FlyingSwords';
-                player.color = "#ff0066";
-            }},
-            {t:"☀️ サン・クラッシャー", d:"灼熱領域: 停止中にエネルギー充填。移動開始時に超広範囲の爆熱波を放つ。", f:()=>{
-                player.subClass = 'SunCrusher';
-                stats.auraRange += 50;
-                player.color = "#ffd700";
-            }}
-        ];
-    } else if(player.class === 'Sniper') {
-        evos = [
-            {t:"🌌 ディメンション・ウォーカー", d:"次元干渉: 弾が画面端をループする度、巨大化し威力が倍増する。", f:()=>{
-                player.subClass = 'DimensionWalker';
-                stats.ghostShot = true;
-                stats.infinitePierce = true;
-                player.color = "#88ff88";
-            }},
-            {t:"💎 プリズム・シューター", d:"幾何学反射: 弾が敵や壁に当たるたびに2つに分裂し、レーザー網を形成する。", f:()=>{
-                player.subClass = 'PrismShooter';
-                stats.prismSplit = true;
-                stats.dmg *= 0.8; // Balance
-                player.color = "#ff00ff";
-            }}
-        ];
-    } else if(player.class === 'Guardian') {
-        evos = [
-            {t:"⚡ テスラ・エンジニア", d:"電気柵: 設置したタレット同士が「高圧電流」で接続され、触れた敵を焼き尽くす。", f:()=>{
-                player.subClass = 'TeslaEngineer';
-                stats.teslaGrid = true;
-                stats.sentryMax = 12; // さらに増える
-                player.color = "#00ffcc";
-            }},
-            {t:"🦍 アース・シェイカー", d:"重戦車: 巨大化し、歩くだけで足元に衝撃波が発生。敵を弾き飛ばし粉砕する。", f:()=>{
-                player.subClass = 'EarthShaker';
-                stats.isEarthShaker = true;
-                player.size = 30; // Huge
-                player.maxHp += 1000; player.hp += 1000;
-                stats.armor += 10;
-                player.color = "#885500";
-            }}
-        ];
+    // 2. シャッフルして3つ選ぶ
+    pool.sort(() => Math.random() - 0.5);
+    let opts = pool.slice(0, 3);
+
+    // 3. Lv100以上の特異点 (Singularity) 処理
+    if(level >= 100) {
+        let singOpt = {
+            title: "🌌 限界突破 (SINGULARITY)", 
+            desc: "全ステータス +20%UP", 
+            f:()=>{
+                stats.dmg*=1.2; stats.spd+=1; stats.rate*=0.9; 
+                stats.bulletSpeed*=1.2; player.maxHp*=1.2; player.hp=player.maxHp;
+            }
+        };
+        // Singularityカードを作成して追加
+        let el = document.createElement('div'); el.className='card singularity';
+        el.innerHTML = `<span class="icon">🌌</span><h3>${singOpt.title}</h3><p>${singOpt.desc}</p>`;
+        el.onclick = () => { singOpt.f(); resume(); };
+        c.appendChild(el);
+        
+        // 通常枠を2つに減らす
+        opts = opts.slice(0, 2); 
     }
 
-    // 選択肢生成処理
-    if(evos.length > 0) {
-        evos.forEach(o => {
-            let el = document.createElement('div'); el.className='card evo';
-            let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-            el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.d}</p>`;
-            el.onclick = () => { 
-                o.f(); 
-                let nameSpan = document.getElementById('disp-class-name');
-                nameSpan.innerText = `(${title})`;
-                nameSpan.style.color = player.color;
-                resume(); 
-            };
-            c.appendChild(el);
-        });
-    } else {
-        // 万が一クラスが見つからない場合のフォールバック（バグ回避）
+    // 4. カード生成
+    opts.forEach(o => {
+        let el = document.createElement('div'); el.className='card milestone';
+        let icon = o.title.split(' ')[0]; 
+        let title = o.title.split(' ').slice(1).join(' ');
+        el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.desc}</p>`;
+        el.onclick = () => { o.f(); resume(); };
+        c.appendChild(el);
+    });
+
+    // 万が一候補がない場合
+    if(opts.length === 0 && level < 100) {
         let el = document.createElement('div'); el.className='card milestone';
         el.innerHTML = `<h3>LIMIT BREAK</h3><p>全ステータス強化</p>`;
         el.onclick = () => { stats.dmg*=1.5; stats.hp+=100; resume(); };
         c.appendChild(el);
     }
-}
-
-function showMilestone() {
-    gameActive = false;
-    Sound.play('milestone');
-    let m = document.getElementById('menu-overlay'); let c = document.getElementById('card-area');
-    c.innerHTML = ''; m.style.display = 'flex';
-    document.querySelector('#menu-title').innerText = "禁断の力 (Lv"+level+")";
-
-    // ★ 定義に 'check' を追加: これが true を返すとリストに出現しなくなります
-    
-    // --- 共通 (Common) ---
-    let pool = [
-        {t:"⚡ オメガ・レーザー", d:"3秒ごとに画面を薙ぎ払う極太レーザーを発射。", f:()=>{stats.omegaLaser=true;}, check:()=>stats.omegaLaser},
-        {t:"❄️ アブソリュート・ゼロ", d:"周囲の敵を凍結させ、長時間停止させるオーラ。", f:()=>{stats.absoluteZero=true;}, check:()=>stats.absoluteZero}, 
-        {t:"💀 ネクロマンサー", d:"敵撃破時に、敵を追尾する怨霊弾を召喚する。", f:()=>{stats.necromancer=true;}, check:()=>stats.necromancer},
-        {t:"🩸 血の契約", d:"最大HPが1になる代わりに、攻撃力が5倍になる。", f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;}, check:()=>player.maxHp===1},
-        {t:"🛡️ ゴッドモード", d:"被弾時の無敵時間が3倍になる。", f:()=>{player.invincibleMax=60;}, check:()=>player.invincibleMax>=60},
-        // ▼ 新規追加
-        {t:"👥 ドッペルゲンガー", d:"背後に分身が出現し、反対方向へ同時に攻撃する。", f:()=>{stats.doppelganger=true;}, check:()=>stats.doppelganger},
-        {t:"⏳ ザ・ワールド", d:"ダメージを受けると時が止まり、回避のチャンスを得る(CDあり)。", f:()=>{stats.timeStop=true;}, check:()=>stats.timeStop},
-        {
-        t:"🧬 ジャイアントキラー", 
-        d:"攻撃時、敵の最大HPの2%分の追加ダメージを与える。", 
-        f:()=>{ stats.hpDamage += 0.02; }, 
-        check:()=>false // 何度でも取得可能にするなら false、1回限りなら stats.hpDamage > 0
-    },
-    {
-        t:"🎯 フェイタル・クリティカル", 
-        d:"クリティカルダメージ倍率 +50% (現在: " + (stats.critMult*100).toFixed(0) + "%)", 
-        f:()=>{ stats.critMult += 0.5; }, 
-        check:()=>stats.critMult >= 10.0 // 上限を設ける場合
-    },
-    {
-        t:"🩸 鮮血の爪", 
-        d:"失ったHP割合に応じて攻撃力が上昇する (背水)", 
-        f:()=>{ stats.lowHpDmg = true; }, 
-        check:()=>stats.lowHpDmg
-    }
-    ];
-
-    // --- クラス別 (Class Specific) ---
-    if(player.class === 'Assault') {
-        pool = pool.concat([
-            {t:"💣 爆裂弾", d:"全ての通常弾が着弾時に爆発するようになる。", f:()=>{stats.shotExplode=true;}, check:()=>stats.shotExplode},
-            {t:"↩️ 跳弾", d:"弾が画面端で跳ね返るようになる。", f:()=>{stats.shotBounce=true;}, check:()=>stats.shotBounce},
-            {t:"👯 ダブルトリガー", d:"50%の確率で、一度に2発の弾を発射する。", f:()=>{stats.doubleShot=true;}, check:()=>stats.doubleShot},
-            {t:"🚀 ミサイル祭", d:"射撃時に20%の確率で追加ミサイルを発射。", f:()=>{stats.missileChance=0.2;}, check:()=>stats.missileChance>=0.2},
-            {t:"♾️ 無限マガジン", d:"一度の発射数+3。リロード時間がゼロになる。", f:()=>{stats.infiniteMag=true;}, check:()=>stats.infiniteMag},
-            {t:"⚙️ ガトリング", d:"連射速度が限界突破し、凄まじい弾幕を張る。", f:()=>{stats.rate=Math.max(1, stats.rate-10); stats.gatling=true;}, check:()=>stats.gatling},
-            // ▼ 新規追加
-            {t:"🔥 オーバーヒート", d:"撃ち続けると連射速度が上がるが、自分が僅かにダメージを受ける。", f:()=>{stats.overheat=true;}, check:()=>stats.overheat},
-            {t:"🦶 リコイルジャンプ", d:"射撃の反動で後ろに下がるようになり、機動力が上がる。", f:()=>{stats.recoilJump=true;}, check:()=>stats.recoilJump}
-        ]);
-    } else if(player.class === 'Melee') {
-        pool = pool.concat([
-            {t:"🦍 タイタン", d:"HP2倍、サイズ1.5倍。攻撃判定も巨大化。", f:()=>{player.maxHp*=2; player.hp*=2; player.size*=1.5; stats.titan=true;}, check:()=>stats.titan},
-            {t:"⚫ ブラックホール", d:"オーラが敵を強力に吸い寄せるようになる。", f:()=>{stats.blackHole=true;}, check:()=>stats.blackHole},
-            {t:"⚔️ ブレードストーム", d:"回転刃の枚数が+4枚追加される。", f:()=>{stats.bladeStorm=true;}, check:()=>stats.bladeStorm},
-            {t:"🌎 アースクエイク", d:"2秒ごとに画面全体攻撃を行い、敵を気絶させる。", f:()=>{stats.earthquake=true;}, check:()=>stats.earthquake},
-            {t:"🌵 スパイクリフレクト", d:"敵接触時のダメージを2倍にして反射する。", f:()=>{stats.spikeReflect=true;}, check:()=>stats.spikeReflect},
-            {t:"🧛 ブラッドラスト", d:"敵を倒すとHPが1%回復する。", f:()=>{stats.bloodLust=true;}, check:()=>stats.bloodLust},
-            // ▼ 新規追加
-            {t:"🤺 パリィ", d:"15%の確率でダメージを無効化し、周囲を吹き飛ばす。", f:()=>{stats.parry=true;}, check:()=>stats.parry},
-            {t:"🌊 ソードウェーブ", d:"回転刃から定期的に真空波が飛び、遠くの敵を斬る。", f:()=>{stats.swordWave=true;}, check:()=>stats.swordWave}
-        ]);
-    } else if(player.class === 'Sniper') {
-        pool = pool.concat([
-            {t:"🚅 レールガン", d:"弾速2倍、サイズ2倍。全ての敵を貫通する。", f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;}, check:()=>stats.railgun},
-            {t:"🔪 処刑人", d:"HP30%以下の敵に攻撃すると即死させる。", f:()=>{stats.execute=true;}, check:()=>stats.execute},
-            {t:"👁️ デッドアイ", d:"全ての攻撃がクリティカル(3倍ダメージ)になる。", f:()=>{stats.deadeye=true;}, check:()=>stats.deadeye},
-            {t:"⚡ エレクトロフェンス", d:"周囲の敵を麻痺させ、弾き飛ばす電気柵を展開。", f:()=>{stats.electroFence=true;}, check:()=>stats.electroFence}, 
-            {t:"💥 チェーンバースト", d:"敵を倒すと連鎖爆発が発生し、周囲を巻き込む。", f:()=>{stats.chainBurst=true;}, check:()=>stats.chainBurst}, 
-            {t:"☄️ 天罰", d:"ランダムな位置に強力な衛星レーザーが降り注ぐ。", f:()=>{stats.orbital=true;}, check:()=>stats.orbital},
-            // ▼ 新規追加
-            {t:"👻 ファントムバレット", d:"壁や敵をすり抜け、画面外から戻ってくる魔法の弾丸。", f:()=>{stats.phantom=true; stats.ghostShot=true;}, check:()=>stats.phantom},
-            {t:"🎯 サーマルスコープ", d:"画面外の敵にもホーミングが適用され、クリティカル率が上がる。", f:()=>{stats.thermal=true; stats.homing+=2;}, check:()=>stats.thermal}
-        ]);
-    } else if(player.class === 'Guardian') {
-        pool = pool.concat([
-            {t:"🏗️ セントリーシステム", d:"10秒ごとに自動攻撃タレットを設置する。", f:()=>{stats.sentrySystem=true; spawnSentry();}, check:()=>stats.sentrySystem},
-            {t:"🏯 シージモード", d:"立ち止まっている間、攻撃速度とダメージが2倍。", f:()=>{stats.siegeMode=true;}, check:()=>stats.siegeMode},
-            {t:"⚡ リアクティブアーマー", d:"ダメージを受けると、周囲に電撃カウンターを放つ。", f:()=>{stats.reactiveArmor=true;}, check:()=>stats.reactiveArmor},
-            {t:"❤️ ナノマシン修復", d:"HPが30%以下になると超高速で自然回復する。", f:()=>{stats.nanoRepair=true;}, check:()=>stats.nanoRepair},
-            {t:"💣 クラスターマイン", d:"ダッシュ時に大量の地雷をばら撒く。", f:()=>{stats.clusterMine=true;}, check:()=>stats.clusterMine},
-            {t:"🛡️ フォースフィールド", d:"定期的にダメージを完全無効化するバリアを展開。", f:()=>{stats.forceField=true;}, check:()=>stats.forceField},
-            // ▼ 新規追加
-            {t:"🚁 護衛ドローン", d:"プレイヤーの周囲を旋回し、近づく敵を迎撃するドローンを配備。", f:()=>{stats.guardDrone=true;}, check:()=>stats.guardDrone},
-            {t:"🏰 移動要塞", d:"移動速度が半減する代わりに、防御力とHPが大幅に上昇する。", f:()=>{stats.spd*=0.5; stats.armor+=10; player.maxHp+=500; player.hp+=500;}, check:()=>stats.armor>=25} // 簡易判定
-        ]);
-    } else if(player.class === 'Alchemist') {
-        pool = pool.concat([
-            {t:"☣️ パンデミック", d:"毒を受けた敵が死ぬと、その場に毒ガスを発生させる。", f:()=>{stats.pandemic=true;}, check:()=>stats.pandemic},
-            {t:"🧪 神経毒", d:"毒ガスの範囲内にいる敵の移動速度を大幅に下げる。", f:()=>{stats.neurotoxin=true;}, check:()=>stats.neurotoxin},
-            {t:"🧊 コールドフラスコ", d:"攻撃時、10%の確率で敵を凍結させる。", f:()=>{stats.coldFlask=true;}, check:()=>stats.coldFlask},
-            {t:"🤢 腐食液", d:"毒ガスのダメージ間隔が半分になり、火力が倍増する。", f:()=>{stats.corrosion=true;}, check:()=>stats.corrosion},
-            {t:"💊 違法な興奮剤", d:"移動速度+20、連射速度+20%。ただし被ダメージが1.5倍になる。", f:()=>{stats.spd+=20; stats.rate-=5; stats.armor-=5;}, check:()=>stats.drugMode}, // drugModeフラグ追加要
-            {t:"🌧️ アシッドレイン", d:"3秒ごとにランダムな場所に強力な酸の雨（毒沼）を降らせる。", f:()=>{stats.acidRain=true;}, check:()=>stats.acidRain},
-            // ▼ 新規追加
-            {t:"🧟 ゾンビウイルス", d:"倒した敵が一定確率で味方のミニオンとして復活する。", f:()=>{stats.zombieVirus=true;}, check:()=>stats.zombieVirus},
-            {t:"⚗️ ケミカル・バーン", d:"毒状態の敵に攻撃すると、追加で爆発ダメージを与える。", f:()=>{stats.chemicalBurn=true;}, check:()=>stats.chemicalBurn}
-        ]);        
-    } else if(player.class === 'Trickster') {
-        pool = pool.concat([
-            {t:"🎰 スロットマシン", d:"5秒ごとにランダムなステータスが劇的に変化する。", f:()=>{stats.slotMachine=true;}, check:()=>stats.slotMachine},
-            {t:"🃏 ジョーカー", d:"HPが減るほど、クリティカル率と回避率が超上昇する。", f:()=>{stats.joker=true;}, check:()=>stats.joker},
-            {t:"🎲 ロシアンルーレット", d:"1/6の確率でダメージが10倍になるが、たまに不発になる。", f:()=>{stats.russianRoulette=true;}, check:()=>stats.russianRoulette},
-            {t:"✨ マジックカード", d:"弾が敵を貫通し、壁で跳ね返るようになる。", f:()=>{stats.pierce+=2; stats.shotBounce=true;}, check:()=>stats.shotBounce},
-            {t:"💰 ジャックポット", d:"敵を倒した時、稀に大量の経験値オーブが爆発四散する。", f:()=>{stats.jackpot=true;}, check:()=>stats.jackpot},
-            {t:"🌀 カオス弾", d:"弾が不規則に蛇行し、サイズもバラバラになる。", f:()=>{stats.chaosShot=true;}, check:()=>stats.chaosShot},
-            // ▼ 新規追加
-            {t:"🎲 ラッキーセブン", d:"7発ごとの攻撃が必ずクリティカル＆範囲攻撃になる。", f:()=>{stats.luckySeven=true;}, check:()=>stats.luckySeven},
-            {t:"🃏 ワイルドカード", d:"他のクラスの禁断の力（スキル）がランダムで1つ発動する。", f:()=>{stats.wildCard=true; /* 実装は要工夫 */}, check:()=>stats.wildCard}
-        ]);
-    }
-
-    // ★ 重複チェック: check関数を実行してtrueならリストから除外する
-    pool = pool.filter(p => !p.check || !p.check());
-
-    pool.sort(() => Math.random() - 0.5);
-    let opts = pool.slice(0, 3);
-
-    // Singularity (Lv100+)
-    if(level >= 100) {
-        let singOpt = {t:"🌌 限界突破 (SINGULARITY)", d:"全ステータス +20%UP", f:()=>{
-            stats.dmg*=1.2; stats.spd+=1; stats.rate*=0.9; stats.bulletSpeed*=1.2; player.maxHp*=1.2; player.hp=player.maxHp;
-        }};
-        
-        let el = document.createElement('div'); el.className='card singularity';
-        el.innerHTML = `<span class="icon">🌌</span><h3>${singOpt.t}</h3><p>${singOpt.d}</p>`;
-        el.onclick = () => { singOpt.f(); resume(); };
-        c.appendChild(el);
-        opts = opts.slice(0, 2); 
-    }
-
-    opts.forEach(o => {
-        let el = document.createElement('div'); el.className='card milestone';
-        let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-        el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.d}</p>`;
-        el.onclick = () => { o.f(); resume(); };
-        c.appendChild(el);
-    });
 }
 
 function showUpgrade() {
@@ -2464,135 +2561,36 @@ function showUpgrade() {
     m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "LEVEL UP!";
 
-    // アップグレード生成用ヘルパー
-    const createOpt = (id, icon, title, val, unit, applyFunc, descGen) => {
-        return { id: id, icon: icon, title: title, val: val, unit: unit, func: applyFunc, desc: descGen };
-    };
-
-    let pool = [];
-
-    // =========================================
-    // 1. 全クラス共通 (Universal Stats)
-    // =========================================
-    pool.push(createOpt('dmg_p', '💪', '攻撃力UP', 15, '%', (v)=>stats.dmg=Math.floor(stats.dmg*(1+v/100)), (v)=>`ダメージ +${v}%`));
-    pool.push(createOpt('hp', '❤️', '最大HP', 50, '', (v)=>{player.maxHp+=v; player.hp+=v;}, (v)=>`HP +${v}`));
-    pool.push(createOpt('spd', '👟', '移動速度', 2, '', (v)=>stats.spd+=v, (v)=>`速度 +${v}`));
-    pool.push(createOpt('crit', '🎯', 'クリティカル', 5, '%', (v)=>stats.critChance+=v/100, (v)=>`会心率 +${v}%`));
-    pool.push(createOpt('magnet', '🧲', '収集範囲', 50, '', (v)=>stats.magnet+=v, (v)=>`範囲 +${v}`));
+    // 1. 出現条件(condition)を満たすアイテムだけを抽出
+    let validPool = UPGRADE_DATA.filter(item => !item.condition || item.condition());
     
-    // 全クラス共通：雷撃
-    pool.push(createOpt('lightning', '🌩️', '雷撃強化', 1, 'Lv', (v)=>stats.lightning+=v, (v)=>`雷撃レベル +${v}`));
+    // 万が一候補が少なすぎる場合の安全策
+    if (validPool.length < 3) validPool = UPGRADE_DATA.slice(0, 5); // 強引に基本ステータスを入れる
 
-    // レア枠：回復
-    if(Math.random() < 0.2) {
-        pool.push(createOpt('super_regen', '🏥', '超回復', 10, '', (v)=>stats.regen+=v, (v)=>`HP回復 +${v}/s`));
-    } else {
-        pool.push(createOpt('regen', '💖', 'リジェネ', 2, '', (v)=>stats.regen+=v, (v)=>`HP回復 +${v}/s`));
-    }
-
-    // =========================================
-    // 2. クラス固有ウェポン & 特殊ステータス
-    // =========================================
-
-    // ★ ビット (スナイパー or 所持時)
-    if(player.class === 'Sniper' || stats.drones > 0) {
-        pool.push(createOpt('drone', '🛰️', 'ビット増設', 1, '機', (v)=>stats.drones+=v, (v)=>`ビット数 +${v}`));
-        pool.push(createOpt('drone', '🛰️', 'ビット増設', 1, '機', (v)=>stats.drones+=v, (v)=>`ビット数 +${v}`));
-    }
-    // ★ ミサイル (アサルト or 所持時)
-    if(player.class === 'Assault' || stats.missile > 0) {
-        pool.push(createOpt('missile', '🚀', 'ミサイル', 1, 'Lv', (v)=>stats.missile+=v, (v)=>`発射数/頻度 +${v}`));
-        pool.push(createOpt('missile', '🚀', 'ミサイル', 1, 'Lv', (v)=>stats.missile+=v, (v)=>`発射数/頻度 +${v}`));
-    }
-    // ★ チャクラム (トリックスター or 所持時)
-    if(player.class === 'Trickster' || stats.chakram > 0) {
-        pool.push(createOpt('chakram', '🥏', 'チャクラム', 1, '個', (v)=>stats.chakram+=v, (v)=>`同時投擲数 +${v}`));
-    }
-
-    // ★【復活＆修正】ホーミング (射撃系クラス用 + Novice追加)
-    // ヴァンガード(Melee)以外なら出現するように設定
-    if(player.class !== 'Melee' || stats.homing > 0) {
-        // 出やすいように2回登録
-        pool.push(createOpt('homing', '👁️', 'ホーミング', 1, 'Lv', (v)=>stats.homing+=v, (v)=>`追尾性能 +${v}`));
-        pool.push(createOpt('homing', '👁️', 'ホーミング', 1, 'Lv', (v)=>stats.homing+=v, (v)=>`追尾性能 +${v}`));
-    }
-
-    // =========================================
-    // 3. クラス別ステータス重み付け
-    // =========================================
-    
-    // 攻撃範囲
-    let areaWeight = 1;
-    if(player.class === 'Melee' || player.class === 'Guardian' || player.class === 'Alchemist') areaWeight = 3; 
-    for(let i=0; i<areaWeight; i++) {
-        pool.push(createOpt('area', '💥', '攻撃範囲', 10, '%', (v)=>{
-            stats.areaScale += v/100;
-            if(player.class === 'Melee') player.size *= 1.05; 
-        }, (v)=>`サイズ +${v}%`));
-    }
-
-    // 弾速 (近接以外)
-    if(player.class !== 'Melee' && player.class !== 'Samurai' && player.class !== 'Guardian') {
-        pool.push(createOpt('bullet_speed', '🚅', '弾速', 10, '%', (v)=>stats.bulletSpeed*=(1+v/100), (v)=>`弾の速さ +${v}%`));
-    }
-
-    // 貫通 (射撃系)
-    if(['Sniper', 'Assault', 'Trickster', 'Tempest', 'Novice'].includes(player.class)) {
-        pool.push(createOpt('pierce', '🏹', '貫通力', 1, '', (v)=>stats.pierce+=v, (v)=>`貫通数 +${v}`));
-    }
-
-    // 連射速度
-    pool.push(createOpt('rate', '⚡', 'クールダウン', 5, '%', (v)=>stats.rate=Math.max(2, stats.rate*(1-v/100)), (v)=>`攻撃間隔 -${v}%`));
-
-    // 持続時間
-    if(player.class === 'Alchemist' || player.class === 'Guardian' || stats.clusterMine || stats.poison > 0) {
-        pool.push(createOpt('duration', '⏳', '効果時間', 15, '%', (v)=>stats.duration+=v/100, (v)=>`持続時間 +${v}%`));
-    }
-
-    // 防御力
-    if(['Melee', 'Samurai', 'Guardian'].includes(player.class)) {
-        pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
-        pool.push(createOpt('armor', '🛡️', '装甲強化', 2, '', (v)=>stats.armor+=v, (v)=>`被ダメージ -${v}`));
-    }
-    
-    // ノックバック
-    if(['Melee', 'Sniper', 'Assault', 'Novice'].includes(player.class)) {
-        pool.push(createOpt('knockback', '🥊', '衝撃力', 1, '', (v)=>stats.knockback+=v, (v)=>`ノックバック +${v}`));
-    }
-
-    // マルチショット
-    if(player.class === 'Melee') {
-        pool.push(createOpt('multi', '⚔️', '回転刃+', 1, '', (v)=>stats.multi+=v, (v)=>`回転刃の数 +${v}`));
-    } else if(player.class === 'Samurai') {
-        pool.push(createOpt('multi', '🌊', '衝撃波+', 1, '', (v)=>stats.multi+=v, (v)=>`衝撃波の数 +${v}`));
-    } else {
-        // Novice含む射撃系
-        pool.push(createOpt('multi', '🔫', 'マルチショット', 1, '', (v)=>stats.multi+=v, (v)=>`同時発射数 +${v}`));
-    }
-
-    // =========================================
-    // 4. 抽選
-    // =========================================
+    // 2. ランダムに3つ選出
+    validPool.sort(() => Math.random() - 0.5);
     let choices = [];
-    let safety = 0;
+    let pickedIds = new Set();
     
-    pool.sort(() => Math.random() - 0.5);
-
-    while(choices.length < 3 && safety < 100) {
-        let base = pool[safety % pool.length]; 
-        if(!choices.some(c => c.id === base.id)) {
-            let opt = { ...base }; 
-            if(Math.random() < 0.1) {
-                opt.isRare = true;
-                let mult = 2; 
-                if(opt.id === 'hp') mult = 3; 
-                opt.val = Math.floor(opt.val * mult);
-            }
-            choices.push(opt);
+    for (let item of validPool) {
+        if (choices.length >= 3) break;
+        if (pickedIds.has(item.id)) continue; // ID重複回避
+        
+        // オブジェクトをコピーして使用（元のデータを汚さないため）
+        let opt = { ...item };
+        
+        // 3. レアリティ判定 (10%で効果2倍、HPなら3倍)
+        if (Math.random() < 0.1) {
+            opt.isRare = true;
+            let mult = (opt.id === 'hp') ? 3 : 2;
+            opt.val = Math.floor(opt.val * mult);
         }
-        safety++;
+        
+        choices.push(opt);
+        pickedIds.add(item.id);
     }
 
+    // 4. カード生成
     choices.forEach(o => {
         let el = document.createElement('div'); 
         el.className = 'card';
@@ -2607,80 +2605,78 @@ function showUpgrade() {
     });
 }
 
+// ▼▼▼ ここからコピー ▼▼▼
+
+// 1. 共通のカード生成ヘルパー関数 (これが足りなかった部分です！)
+function createEvoCard(item, isSecond) {
+    let el = document.createElement('div'); 
+    el.className = 'card evo';
+    // カードの見た目を作る
+    el.innerHTML = `<span class="icon">${item.icon}</span><h3>${item.title}</h3><p>${item.desc}</p>`;
+    
+    // クリック時の動作
+    el.onclick = () => { 
+        // 色とクラス名を更新
+        player.color = item.color;
+        let nameSpan = document.getElementById('disp-class-name');
+        nameSpan.innerText = `(${item.title})`; 
+        nameSpan.style.color = player.color;
+
+        // クラスID設定 (1次進化か2次進化かで書き込む場所を変える)
+        if (isSecond) {
+            player.subClass = item.id;
+        } else {
+            player.class = item.id;
+        }
+
+        // 個別効果の適用 (funcを実行)
+        if(item.func) item.func(); 
+        
+        resume(); 
+    };
+    return el;
+}
+
+// 2. 第1次進化 (Level 5)
 function showEvo() {
     gameActive = false;
-    let m = document.getElementById('menu-overlay'); let c = document.getElementById('card-area');
-    c.innerHTML = ''; m.style.display = 'flex';
+    let m = document.getElementById('menu-overlay'); 
+    let c = document.getElementById('card-area');
+    c.innerHTML = ''; 
+    m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "クラス進化";
 
-    let evos = [
-        // --- 新規追加クラス ---
-        {t:"⚔️ 侍・剣豪 (Samurai)", d:"一閃: 射程は短いが、前方の敵を一瞬で葬る「斬撃」を放つ。", f:()=>{
-            player.class="Samurai"; player.color="#ffffff"; // 白銀
-            stats.samuraiMode = true; // 専用フラグ
-            stats.rate = 20; // 攻撃間隔は遅い
-            stats.dmg = 300; // 一撃が重い
-            stats.spd += 5;  // 足が速い
-            stats.pierce = 999; // 無限貫通
-            stats.knockback = 0; // ノックバックさせず切り裂く
-        }},
-        {t:"⚡ 雷帝 (Tempest)", d:"天変地異: 常に周囲に落雷が発生し、攻撃弾も連鎖雷撃を引き起こす。", f:()=>{
-            player.class="Tempest"; player.color="#8A2BE2"; // 紫電
-            stats.tempestMode = true; // 専用フラグ
-            stats.rate = 8;  // 高速連射
-            stats.dmg = 15;  
-            stats.lightning = 3; // 最初からライトニングLv3
-            stats.bulletSpeed = 25; // 弾速も速い
-        }},
-        // --- 既存クラス ---
-        {t:"🔫 アサルト", d:"連射特化: マシンガン(連射・2発・貫通)解禁", f:()=>{
-            player.class="Assault"; player.color="#00ffff"; 
-            stats.rate=4; stats.dmg+=10; stats.multi=1; stats.pierce=1; 
-        }},
-        {t:"🛡️ ヴァンガード", d:"近接: 超・広範囲 & HP+500/リジェネ+10", f:()=>{
-            player.class="Melee"; player.color="#ff3333"; 
-            stats.aura=true; stats.auraRange=180; stats.spd+=4; 
-            player.maxHp+=500; player.hp+=500; stats.regen+=10; 
-        }},
-        {t:"🔭 スナイパー", d:"遠距離: 💥破片 & 🔙ノックバック", f:()=>{
-            player.class="Sniper"; player.color="#ffff00"; 
-            stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=0;
-            stats.drones+=1; stats.shrapnel=true; stats.knockback=1; 
-        }},
-        {t:"🧱 ガーディアン", d:"機動要塞: タレット8基展開・反射装甲・高耐久", f:()=>{
-            player.class="Guardian"; player.color="#00ff88"; 
-            stats.armor+=20; player.maxHp+=1500; player.hp=player.maxHp; 
-            stats.spd-=0.5; stats.magnet+=200; stats.sentryRate=2.5; 
-            stats.sentryMax=6; stats.sentrySystem=true; spawnSentry(); stats.spikeReflect=true; 
-        }},
-        {t:"⚗️ アルケミスト", d:"毒物劇物: 毒ガス・凍結・弱体化をバラ撒く", f:()=>{
-            player.class="Alchemist"; player.color="#aa00ff"; 
-            stats.poison = 5; stats.dmg *= 0.7; stats.rate *= 0.9; 
-            stats.alchemistMode = true; stats.neurotoxin = false; stats.pandemic = false;
-        }},
-        {t:"🃏 トリックスター", d:"運否天賦: 弾の性能が毎回ランダムに変化する。", f:()=>{
-            player.class="Trickster"; player.color="#ff00ff"; 
-            stats.rate = 5; 
-            stats.dmg = 18; // ▼ 修正: 初期攻撃力を10→18に強化（序盤安定化）
-            stats.tricksterMode = true; 
-            stats.slotMachine = false; stats.joker = false; 
-        }}
-    ];
-
-    evos.forEach(o => {
-        let el = document.createElement('div'); el.className='card';
-        let icon = o.t.split(' ')[0]; let title = o.t.split(' ').slice(1).join(' ');
-        el.innerHTML = `<span class="icon">${icon}</span><h3>${title}</h3><p>${o.d}</p>`;
-        el.onclick = () => { 
-            o.f(); 
-            let nameSpan = document.getElementById('disp-class-name');
-            nameSpan.innerText = `(${title})`;
-            nameSpan.style.color = player.color;
-            resume(); 
-        };
-        c.appendChild(el);
+    // 定義データ(EVO_DATA)からカードを生成して並べる
+    EVO_DATA.forEach(item => {
+        c.appendChild(createEvoCard(item, false));
     });
 }
+
+// 3. 第2次進化 (Level 40)
+function showSecondEvo() {
+    gameActive = false;
+    let m = document.getElementById('menu-overlay'); 
+    let c = document.getElementById('card-area');
+    c.innerHTML = ''; 
+    m.style.display = 'flex';
+    document.querySelector('#menu-title').innerText = "第2次進化 (Class Evolution)";
+
+    // 現在のクラスから派生する進化先だけを抽出
+    let validEvos = SECOND_EVO_DATA.filter(item => item.parent === player.class);
+
+    if(validEvos.length > 0) {
+        validEvos.forEach(item => {
+            c.appendChild(createEvoCard(item, true));
+        });
+    } else {
+        // 万が一進化先がない場合
+        let el = document.createElement('div'); el.className='card milestone';
+        el.innerHTML = `<h3>LIMIT BREAK</h3><p>全ステータス強化</p>`;
+        el.onclick = () => { stats.dmg*=1.5; stats.hp+=100; resume(); };
+        c.appendChild(el);
+    }
+}
+// ▲▲▲ ここまでコピー ▲▲▲
 
 function resume() {
     document.getElementById('menu-overlay').style.display = 'none';
@@ -2774,8 +2770,6 @@ function triggerWarning() {
 }
 
 updateUI();
-
-// ▼▼▼ ここから追加コード (v4: 完全幾何学デザイン版) ▼▼▼
 
 // --- プレイヤー描画専用関数 (向き固定版) ---
 function drawPlayerSprite(ctx, p) {
