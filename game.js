@@ -588,7 +588,7 @@ function updateEnemies(ts, gameTimeSec) {
         let spawnProb = (hordeMult / spawnDenom) * ts;
         
         // HP満タン時のスポーン倍率も少しマイルドにしつつ維持
-        if(player.hp >= player.maxHp * 0.9) spawnProb *= 2.0; 
+        if(level >= 5 && player.hp >= player.maxHp * 0.9) spawnProb *= 2.0;
 
         if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
     }
@@ -1037,9 +1037,9 @@ function createEnemy(type, x, y) {
     // 【改善2】HP満タン時のペナルティ仕様変更（重要！）
     // 旧仕様: HPが 5倍〜8倍 になる → 硬すぎてつまらない
     // 新仕様: HPは 1.3倍 だが、移動速度と攻撃力が跳ね上がる → 「殺るか殺られるか」の緊張感
-    if (player.hp >= player.maxHp * 0.9) {
+    if (level >= 5 && player.hp >= player.maxHp * 0.9) {
         // レベルが高いほど殺意が増す
-        let dangerLevel = Math.min(3.0, 1.0 + (level / 50)); 
+        let dangerLevel = Math.min(3.0, 1.0 + (level / 50));
         
         hpMult *= 1.3; // 硬さは少し増す程度
         e.speedMultOverride = 1.2 * dangerLevel; // 敵が加速する！
