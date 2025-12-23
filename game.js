@@ -144,7 +144,23 @@ function updateSkills(ts) {
                 });
                 if(target) {
                     let ang = Math.atan2(target.y - s.y, target.x - s.x);
-                    bullets.push({type:'normal', x:s.x, y:s.y, vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, size:6, color:'#0f0', hit:[], pierce:stats.pierce});
+                    let count = Math.floor(stats.multi);
+                    if(count < 1) count = 1;
+                    
+                    // 複数発射時の拡散角度 (0.2ラジアンずつ広げる)
+                    let spread = 0.2; 
+                    let startAngle = ang - (spread * (count - 1)) / 2;
+
+                    for(let i=0; i<count; i++) {
+                        let currentAngle = startAngle + spread * i;
+                        bullets.push({
+                            type:'normal', 
+                            x:s.x, y:s.y, 
+                            vx:Math.cos(currentAngle)*stats.bulletSpeed, 
+                            vy:Math.sin(currentAngle)*stats.bulletSpeed, 
+                            size:6, color:'#0f0', hit:[], pierce:stats.pierce
+                        });
+                    }
                     Sound.play('shoot', 1.5);
                     s.cooldown = Math.max(5, stats.rate * (1/stats.sentryRate));
                 }
@@ -1042,7 +1058,7 @@ function createEnemy(type, x, y) {
         let dangerLevel = Math.min(3.0, 1.0 + (level / 50));
         
         hpMult *= 1.3; // 硬さは少し増す程度
-        e.speedMultOverride = 1.2 * dangerLevel; // 敵が加速する！
+        e.speedMultOverride = 1.3 * dangerLevel; // 敵が加速する！
         e.dmgMultOverride = 1.5; // 一撃が痛くなる
         
         // 視覚的にヤバさを伝える（少し赤く発光させるなどの処理があればベストだが、今回は速度で表現）
