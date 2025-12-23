@@ -107,9 +107,13 @@ const UPGRADE_DATA = [
       func: (v)=> stats.chakram+=v, 
       condition: ()=> player.class === 'Trickster' || stats.chakram > 0 },
     { id: 'homing', icon: '👁️', title: 'ホーミング', val: 1, unit: 'Lv', 
-      desc: v=>`弾が敵を追尾する\n(性能 +${v})`, 
+      desc: v=> {
+          let str = `弾が敵を追尾する\n(性能 +${v})`;
+          if(player.class === 'Melee') str += "\n(オーラのヒット間隔短縮!)";
+          return str;
+      },
       func: (v)=> stats.homing+=v, 
-      condition: ()=> !['Melee','Samurai'].includes(player.class) || stats.homing > 0 },
+      condition: ()=> !['Samurai'].includes(player.class) || stats.homing > 0 },
     { id: 'area', icon: '💥', title: '攻撃範囲', val: 10, unit: '%', 
       desc: v=> {
           if(player.class==='Melee') return `オーラサイズ +${v}%`;
@@ -125,7 +129,7 @@ const UPGRADE_DATA = [
           return `弾の飛ぶ速さ +${v}%`;
       },
       func: (v)=> stats.bulletSpeed*=(1+v/100), 
-      condition: ()=> !['Melee','Guardian'].includes(player.class) },
+      condition: ()=> !['Melee','Alchemist'].includes(player.class) },
     { id: 'pierce', icon: '🏹', title: '貫通力', val: 1, unit: '', 
       desc: v=>`敵を貫通する数 +${v}`, 
       func: (v)=> stats.pierce+=v, 
