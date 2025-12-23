@@ -554,8 +554,18 @@ function updateEnemies(ts, gameTimeSec) {
     if(enemies.length < MAX_ENEMIES) {
         let spawnDenom = Math.max(5, 25 - (level * 0.6)); 
         let hordeMult = (level >= 5 ? 2.0 + Math.min(1.0, (level - 5) / 25) : 1.0) * (singularityMode ? 3.0 : 1.0);
+        
+        // 【改善】ダイナミックスポーンレート
+        // 敵が少ない（＝瞬殺している）時ほど、次が湧きやすくなる
+        let currentCountRatio = enemies.length / MAX_ENEMIES; // 0.0(いない) ~ 1.0(満員)
+        if(currentCountRatio < 0.2) hordeMult *= 3.0; // 敵が少なければ3倍湧く
+        else if(currentCountRatio < 0.5) hordeMult *= 1.5;
+
         let spawnProb = (hordeMult / spawnDenom) * ts;
-        if(player.hp >= player.maxHp * 0.9) spawnProb *= 3.0; 
+        
+        // HP満タン時のスポーン倍率も少しマイルドにしつつ維持
+        if(player.hp >= player.maxHp * 0.9) spawnProb *= 2.0; 
+
         if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
     }
 
@@ -978,12 +988,24 @@ function createEnemy(type, x, y) {
         knockbackTimer: 0 
     };
     
-    let hpMult = Math.pow(1.10, level - 1); 
+    // 【改善1】HP上昇率を 1.10 (激重) から 1.07 (マイルド) に緩和
+    // これによりLv100でも「硬すぎる」現象を防ぎます
+    let hpMult = Math.pow(1.07, level - 1); 
+
     if(singularityMode) hpMult *= 2.0;
 
+    // 【改善2】HP満タン時のペナルティ仕様変更（重要！）
+    // 旧仕様: HPが 5倍〜8倍 になる → 硬すぎてつまらない
+    // 新仕様: HPは 1.3倍 だが、移動速度と攻撃力が跳ね上がる → 「殺るか殺られるか」の緊張感
     if (player.hp >= player.maxHp * 0.9) {
-        if (level >= 60) hpMult *= 8.0;
-        else if (level >= 40) hpMult *= 5.0;
+        // レベルが高いほど殺意が増す
+        let dangerLevel = Math.min(3.0, 1.0 + (level / 50)); 
+        
+        hpMult *= 1.3; // 硬さは少し増す程度
+        e.speedMultOverride = 1.2 * dangerLevel; // 敵が加速する！
+        e.dmgMultOverride = 1.5; // 一撃が痛くなる
+        
+        // 視覚的にヤバさを伝える（少し赤く発光させるなどの処理があればベストだが、今回は速度で表現）
     }
 
     e.hp = data.baseHp * hpMult;
@@ -992,24 +1014,34 @@ function createEnemy(type, x, y) {
 
     let spdBase = data.baseSpeed + (level * 0.01 || 0);
     if (type === 'normal') spdBase += Math.random();
+    
     let spdMult = (data.speedMult !== undefined) ? data.speedMult : 1.0;
-    e.speed = spdBase * spdMult;
-    e.dmg = 10 + Math.floor(level * 1.5);
+    // 上記のペナルティによる加速を適用
+    if (e.speedMultOverride) spdMult *= e.speedMultOverride;
 
+    e.speed = spdBase * spdMult;
+    
+    // ダメージ計算
+    let dmgBase = 10 + Math.floor(level * 1.5);
+    if (e.dmgMultOverride) dmgBase *= e.dmgMultOverride;
+    e.dmg = dmgBase;
+
+    // ボス補正
     if(type === 'boss') { 
         e.dmg = 50 + (level * 2);
         let cycleMult = 1 + (bossCycleCounter * 0.5);
+        // 後半のボスはHPだけでなく行動速度も強化
         if(bossCycleCounter >= 3) {
             let lateGameFactor = bossCycleCounter - 2;
             cycleMult *= Math.pow(1.15, lateGameFactor);
-            e.speed = Math.min(6.0, e.speed + (lateGameFactor * 0.5)); 
+            e.speed = Math.min(8.0, e.speed + (lateGameFactor * 0.8)); // ボスも速くする
         }
         e.hp *= cycleMult;
     }
 
     if(singularityMode) { 
         e.color = '#000000'; 
-        e.speed *= 1.2; 
+        e.speed *= 1.3; // シンギュラリティ中はさらに高速
     }
 
     e.maxHp = e.hp; 
