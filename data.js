@@ -379,7 +379,7 @@ const WAVE_DATA = [
     { time: 120, enemies: ['normal', 'bat', 'dasher'] },
     { time: 150, enemies: ['splitter', 'dasher', 'shooter'] },
     { time: 180, enemies: ['dasher', 'shooter', 'tank'] },
-    { time: 240, enemies: ['shooter', 'tank', 'golem'] },
+    { time: 240, enemies: ['shooter', 'tank',] },
     // 時間経過でもっと難しい組み合わせを追加可能
 ];
 
@@ -430,7 +430,7 @@ SkillSystem.on('onHit', (ctx) => {
         }
     } else if(player.class === 'Melee' || player.class === 'Vanguard') {
         phantomDmg = dmg * 0.3;
-        if(player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 0.5);
+        //if(player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 0.5);
     } else if(player.class === 'Assault') {
         phantomDmg = dmg * 0.3;
         // アサルトは少し遅れてダメージ（別関数呼び出しが必要なため、ここでは即時適用とする簡易化も可だが、元の挙動を再現）
