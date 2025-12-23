@@ -43,6 +43,9 @@ function togglePause() {
         isPaused = true;
         gameActive = false;
         
+        // ★修正点1：ポーズした瞬間の時刻を記録
+        pausedAt = Date.now(); 
+        
         // 現在のスコアなどを表示反映
         document.getElementById('pause-score').innerText = Math.floor(score);
         document.getElementById('pause-lv').innerText = level;
@@ -53,6 +56,14 @@ function togglePause() {
         // --- 再開 ---
         isPaused = false;
         menu.classList.remove('active');
+        
+        // ★修正点2：経過時間の補正
+        // (現在時刻 - ポーズした時刻) の分だけ、ゲーム開始時間(startTime)を後ろにずらす
+        if (pausedAt) {
+            let duration = Date.now() - pausedAt;
+            startTime += duration;
+            pausedAt = 0;
+        }
         
         // 時間同期
         lastTime = performance.now(); 
