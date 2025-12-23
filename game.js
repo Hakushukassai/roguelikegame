@@ -522,9 +522,11 @@ function updateProjectiles(ts) {
                     damageEnemy(e, finalDmg);
                     // Hit Effects
                     if(stats.coldFlask && Math.random() < 0.1) { e.frozen = 60; createParticles(e.x, e.y, '#0ff', 5, 2); }
-                    if(stats.knockback > 0 && !b.isMini && e.knockbackTimer <= 0) {
-                        let ang = Math.atan2(e.y - player.y, e.x - player.x), force = stats.knockback * 20 * (e.type === 'boss' ? 0.1 : 1);
-                        e.x += Math.cos(ang) * force; e.y += Math.sin(ang) * force; e.knockbackTimer = e.type === 'boss' ? 20 : 10;
+                    if(stats.knockback > 0 && !b.isMini && e.knockbackTimer <= 0 && e.ai !== 'iron' && e.type !== 'boss') {
+                        let ang = Math.atan2(e.y - player.y, e.x - player.x);
+                        let force = stats.knockback * 20; // ボスは除外されたので単純化
+                        e.x += Math.cos(ang) * force; e.y += Math.sin(ang) * force; 
+                        e.knockbackTimer = 60; // クールダウンを増加 (10 -> 30)
                     }
                     if(stats.clusterStriker && !b.isMini) {
                         Sound.play('explode', 2.0);
@@ -600,6 +602,10 @@ function updateEnemies(ts, gameTimeSec) {
     // AI更新
     enemies.forEach(e => {
         if(e.dead) return;
+        if(e.ai === 'iron' || e.type === 'boss') {
+            e.frozen = 0;          // 凍結(停止)しない
+            e.knockbackTimer = 0;  // ノックバック状態にならない
+        }
         if(e.knockbackTimer > 0) e.knockbackTimer -= ts;
         if(e.frozen > 0) { e.frozen -= ts; if(Math.random()<0.1 && particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#88ffff', 1, 1); }
         else {
@@ -921,7 +927,7 @@ function triggerLightning(target, lv) {
     enemies.forEach(e => {
         if(!e.dead && e !== target && count < maxTargets) {
             if(Math.hypot(e.x - target.x, e.y - target.y) < range) {
-                damageEnemy(e, stats.dmg * 0.8);
+                damageEnemy(e, stats.dmg * 0.5);
                 createLightningEffect(target.x, target.y, e.x, e.y);
                 Sound.play('lightning'); count++;
             }
@@ -999,8 +1005,10 @@ function spawnEnemy(mode, time) {
             type = 'normal';
         }
         
-        // レベル50以上なら低確率でGolemを混ぜる（隠しスパイス）
+        // レベル50以上なら低確率でGolemを混ぜる
         if (level >= 50 && Math.random() < 0.05) type = 'golem';
+
+        if (level >= 60 && Math.random() < 0.05) type = 'iron_will';
     }
 
     createEnemy(type, ex, ey);
