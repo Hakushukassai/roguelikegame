@@ -1,619 +1,1222 @@
-// --- Config ---
-const MAX_ENEMIES = 500;
-const MAX_PARTICLES = 500; 
-const MAX_ORBS = 400; 
-const MAX_TEXTS = 50;
-const MAX_SOUND_CONCURRENT = 32; 
+// --- Game Logic ---
 
-// --- 敵のステータス定義データベース ---
-const ENEMY_DATA = {
-    boss:    { baseHp: 3000, size: 90, color: '#cc0000', baseSpeed: 3.5, ai: 'boss' },
-    golem:   { baseHp: 800,  size: 25, color: '#2F4F4F', baseSpeed: 2.5, ai: 'normal', speedMult: 0.3 },
-    dasher:  { baseHp: 40,   size: 18, color: '#ff3333', baseSpeed: 3.5, ai: 'dasher' },
-    splitter:{ baseHp: 30,   size: 20, color: '#ff3333', baseSpeed: 2.0, ai: 'splitter' },
-    bat:     { baseHp: 12,   size: 10, color: '#ff3333', baseSpeed: 6.0, ai: 'bat' },
-    shooter: { baseHp: 30,   size: 15, color: '#ff3333', baseSpeed: 1.8, ai: 'shooter' },
-    tank:    { baseHp: 150,  size: 24, color: '#ff3333', baseSpeed: 1.5, ai: 'tank' },
-    minion:  { baseHp: 12,   size: 10, color: '#ff3333', baseSpeed: 3.0, ai: 'normal' },
-    normal:  { baseHp: 15,   size: 14, color: '#ff3333', baseSpeed: 2.5, ai: 'normal' }
-};
-
-// --- アップグレード（通常レベルアップ）の定義 ---
-const UPGRADE_DATA = [
-    { id: 'dmg_p', icon: '💪', title: '攻撃力', val: 15, unit: '%', 
-      desc: v=>`ダメージ +${v}%`, 
-      func: (v)=> stats.dmg = Math.floor(stats.dmg*(1+v/100)) },
-    { id: 'hp', icon: '❤️', title: '最大HP', val: 50, unit: '', 
-      desc: v=> {
-          let str = `最大HP +${v}`;
-          if(player.class === 'Melee') str += "\n(攻撃力もUP!)";
-          return str;
-      },
-      func: (v)=> { player.maxHp+=v; player.hp+=v; } },
-    { id: 'spd', icon: '👟', title: '移動スピード', val: 2, unit: '', 
-      desc: v=>`移動スピード +${v}`, 
-      func: (v)=> stats.spd+=v },
-    { id: 'crit', icon: '🎯', title: 'クリティカル', val: 5, unit: '%', 
-      desc: v=>`会心率 +${v}%`, 
-      func: (v)=> stats.critChance+=v/100 },
-    { id: 'magnet', icon: '🧲', title: '収集範囲', val: 50, unit: '', 
-      desc: v=>`アイテム回収距離 +${v}`, 
-      func: (v)=> stats.magnet+=v },
-    { id: 'rate', icon: '⚡', title: '連射スピード', val: 5, unit: '%', 
-      desc: v=> {
-          if(player.class === 'Melee' || player.class === 'Samurai') return `攻撃間隔 -${v}%`;
-          // 【改善3】説明文を分岐
-          if(stats.rate <= 2) return `限界突破! マルチショット +1 / 弾速 +10%`;
-          return `連射速度 +${v}%`; 
-      },
-      func: (v)=> { 
-          // 連射速度が限界(2フレーム以下)に達している場合
-          if(stats.rate <= 2) {
-              // 限界突破ボーナス：同時発射数と弾速を強化する（腐らせない）
-              stats.multi += 1;
-              stats.bulletSpeed *= 1.1;
-              // 演出としてテキストを出す
-              if(typeof texts !== 'undefined') texts.push({x:player.x, y:player.y-40, str:"LIMIT BREAK!", life:60, color:'#0ff'});
-          } else {
-              // 通常の強化
-              stats.rate = Math.max(2, stats.rate*(1-v/100));
-          }
-      } 
-    },
-    { id: 'lightning', icon: '🌩️', title: 'ライトニング', val: 1, unit: 'Lv', 
-      desc: v=>`攻撃時、確率で落雷が発生\n(Lv +${v})`, 
-      func: (v)=> stats.lightning+=v },
-    { id: 'phantom_strike', icon: '👻', title: 'ファントム', val: 1, unit: 'Lv', 
-      desc: v=> {
-          let effect = "攻撃後、確率で追撃が発生";
-          if(player.class === 'Samurai') effect += "\n(侍: 確定会心)";
-          else if(player.class === 'Sniper') effect += "\n(狙撃: 弱った敵を処刑)";
-          else if(player.class === 'Melee') effect += "\n(近接: HP吸収)";
-          else if(player.class === 'Assault') effect += "\n(突撃: 2連撃)";
-          else if(player.class === 'Guardian') effect += "\n(守護: 衝撃波)";
-          else if(player.class === 'Alchemist') effect += "\n(錬金: 呪い付与)";
-          else if(player.class === 'Trickster') effect += "\n(奇術: ランダム倍率)";
-          return `${effect}\n(Lv +${v})`;
-      },
-      func: (v)=> stats.phantomStrike += v },
-    { id: 'void_rift', icon: '🌀', title: 'ヴォイド・リフト', val: 1, unit: 'Lv', 
-      desc: v=> {
-          let effect = "定期的に次元の裂け目を発生させ、\n範囲内の敵を圧殺する";
-          if(player.class === 'Samurai') effect += "\n(侍: 居合/即時発動)";
-          else if(player.class === 'Sniper') effect += "\n(狙撃: ロックオン/被ダメ増)";
-          else if(player.class === 'Melee') effect += "\n(近接: グラビティ/吸引)";
-          else if(player.class === 'Assault') effect += "\n(突撃: 誘爆/ミサイル発生)";
-          else if(player.class === 'Guardian') effect += "\n(守護: 停滞フィールド/凍結)";
-          else if(player.class === 'Alchemist') effect += "\n(錬金: 汚染/毒沼化)";
-          else if(player.class === 'Trickster') effect += "\n(奇術: ?????)";
-          return `${effect}\n(Lv +${v})`;
-      },
-      func: (v)=> stats.voidRift += v },
-    // --- 条件付きアイテム ---
-    { id: 'regen', icon: '💖', title: 'リジェネ', val: 2, unit: '', 
-      desc: v=>`HP自然回復 +${v}/秒`, 
-      func: (v)=> stats.regen+=v, weight: 0.8 }, 
-    { id: 'drone', icon: '🛰️', title: 'ビット増設', val: 1, unit: '機', 
-      desc: v=>`自動攻撃ビット +${v}機`, 
-      func: (v)=> stats.drones+=v, 
-      condition: ()=> player.class === 'Sniper' || stats.drones > 0 },
-    { id: 'missile', icon: '🚀', title: 'ミサイル', val: 1, unit: 'Lv', 
-      desc: v=>`定期的に誘導弾を発射\n(Lv +${v})`, 
-      func: (v)=> stats.missile+=v, 
-      condition: ()=> player.class === 'Assault' || stats.missile > 0 },
-    { id: 'chakram', icon: '🥏', title: 'チャクラム', val: 1, unit: '個', 
-      desc: v=>`跳ね返る円盤を投げる\n(数 +${v})`, 
-      func: (v)=> stats.chakram+=v, 
-      condition: ()=> player.class === 'Trickster' || stats.chakram > 0 },
-    { id: 'homing', icon: '👁️', title: 'ホーミング', val: 1, unit: 'Lv', 
-      desc: v=>`弾が敵を追尾する\n(性能 +${v})`, 
-      func: (v)=> stats.homing+=v, 
-      condition: ()=> !['Melee','Samurai'].includes(player.class) || stats.homing > 0 },
-    { id: 'area', icon: '💥', title: '攻撃範囲', val: 10, unit: '%', 
-      desc: v=> {
-          if(player.class==='Melee') return `オーラサイズ +${v}%`;
-          if(player.class==='Samurai') return `斬撃の巨大化 +${v}%`;
-          if(player.class==='Alchemist') return `毒ガス範囲 +${v}%`;
-          return `弾の大きさ +${v}%`;
-      },
-      func: (v)=> { stats.areaScale += v/100; if(player.class==='Melee') player.size*=1.05; }, 
-      condition: ()=> true },
-    { id: 'bullet_speed', icon: '🚅', title: '弾速', val: 10, unit: '%', 
-      desc: v=> {
-          if(player.class==='Samurai') return `斬撃の飛距離・速度 +${v}%`;
-          return `弾の飛ぶ速さ +${v}%`;
-      },
-      func: (v)=> stats.bulletSpeed*=(1+v/100), 
-      condition: ()=> !['Melee','Guardian'].includes(player.class) },
-    { id: 'pierce', icon: '🏹', title: '貫通力', val: 1, unit: '', 
-      desc: v=>`敵を貫通する数 +${v}`, 
-      func: (v)=> stats.pierce+=v, 
-      condition: ()=> ['Assault','Trickster','Tempest','Novice','Sniper'].includes(player.class) && !stats.infinitePierce },
-    { id: 'duration', icon: '⏳', title: '効果時間', val: 15, unit: '%', 
-      desc: v=>`毒・設置物の持続 +${v}%`, 
-      func: (v)=> stats.duration+=v/100, 
-      condition: ()=> player.class==='Alchemist' || stats.clusterMine || stats.poison>0 },
-    { id: 'armor', icon: '🛡️', title: '装甲強化', val: 2, unit: '', 
-      desc: v=> {
-          let str = `被ダメージ -${v}`;
-          if(player.class === 'Melee') str += "\n(攻撃力・反射痛もUP!)";
-          return str;
-      },
-      func: (v)=> stats.armor+=v, 
-      condition: ()=> ['Melee','Samurai','Guardian'].includes(player.class) || stats.armor > 0 },
-    { id: 'knockback', icon: '🥊', title: '衝撃力', val: 1, unit: '', 
-      desc: v=>`敵を弾き飛ばす距離 +${v}`, 
-      func: (v)=> stats.knockback+=v, 
-      condition: ()=> ['Sniper','Assault','Novice','Trickster'].includes(player.class) },
-    { id: 'multi_blade', icon: '⚔️', title: '回転刃+', val: 1, unit: '', 
-      desc: v=>`周囲の刃の数 +${v}`, 
-      func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Melee' },
-    { id: 'multi_wave', icon: '🌊', title: '衝撃波+', val: 1, unit: '', 
-      desc: v=>`斬撃時の衝撃波 +${v}`, 
-      func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Samurai' },
-    { id: 'multi_shot', icon: '🔫', title: 'マルチショット', val: 1, unit: '', 
-      desc: v=>`同時発射数 +${v}`, 
-      func: (v)=> stats.multi+=v, 
-      condition: ()=> !['Melee','Samurai','Sniper'].includes(player.class) }
-];
-
-// --- 禁断の力（Milestone）の定義 ---
-const MILESTONE_DATA = [
-    // === 共通 (Common) ===
-    { title: "⚡ オメガ・レーザー", desc: "3秒ごとに画面を薙ぎ払う極太レーザーを発射。", 
-      classes: null, isOwned: ()=>stats.omegaLaser, f:()=>{stats.omegaLaser=true;} },
-    { title: "❄️ アブソリュート・ゼロ", desc: "周囲の敵を凍結させ、長時間停止させるオーラ。", 
-      classes: null, isOwned: ()=>stats.absoluteZero, f:()=>{stats.absoluteZero=true;} },
-    { title: "💀 ネクロマンサー", desc: "敵撃破時に、敵を追尾する怨霊弾を召喚する。", 
-      classes: null, isOwned: ()=>stats.necromancer, f:()=>{stats.necromancer=true;} },
-    { title: "🩸 血の契約", desc: "最大HPが1になる代わりに、攻撃力が5倍になる。", 
-      classes: null, isOwned: ()=>player.maxHp===1, f:()=>{player.maxHp=1; player.hp=1; stats.dmg*=5;} },
-    { title: "🛡️ ゴッドモード", desc: "被弾時の無敵時間が3倍になる。", 
-      classes: null, isOwned: ()=>player.invincibleMax>=60, f:()=>{player.invincibleMax=60;} },
-    { title: "👥 ドッペルゲンガー", desc: "背後に分身が出現し、反対方向へ同時に攻撃する。", 
-      classes: null, isOwned: ()=>stats.doppelganger, f:()=>{stats.doppelganger=true;} },
-    { title: "⏳ ザ・ワールド", desc: "ダメージを受けると時が止まり、回避のチャンスを得る(CDあり)。", 
-      classes: null, isOwned: ()=>stats.timeStop, f:()=>{stats.timeStop=true;} },
-    { title: "🧬 ジャイアントキラー", desc: "攻撃時、敵の最大HPの2%分の追加ダメージを与える。", 
-      classes: null, isOwned: ()=>false, f:()=>{stats.hpDamage += 0.02;} }, 
-    { title: "🎯 フェイタル・クリティカル", desc: "クリティカルダメージ倍率 +50%", 
-      classes: null, isOwned: ()=>stats.critMult >= 10.0, f:()=>{stats.critMult += 0.5;} },
-    { title: "🩸 鮮血の爪", desc: "失ったHP割合に応じて攻撃力が上昇する (背水)", 
-      classes: null, isOwned: ()=>stats.lowHpDmg, f:()=>{stats.lowHpDmg = true;} },
-
-    // === アサルト (Assault) ===
-    { title: "💣 爆裂弾", desc: "全ての通常弾が着弾時に爆発するようになる。", 
-      classes: ['Assault'], isOwned: ()=>stats.shotExplode, f:()=>{stats.shotExplode=true;} },
-    { title: "↩️ 跳弾", desc: "弾が画面端で跳ね返るようになる。", 
-      classes: ['Assault'], isOwned: ()=>stats.shotBounce, f:()=>{stats.shotBounce=true;} },
-    { title: "👯 ダブルトリガー", desc: "50%の確率で、一度に2発の弾を発射する。", 
-      classes: ['Assault'], isOwned: ()=>stats.doubleShot, f:()=>{stats.doubleShot=true;} },
-    { title: "🚀 ミサイル祭", desc: "射撃時に20%の確率で追加ミサイルを発射。", 
-      classes: ['Assault'], isOwned: ()=>stats.missileChance>=0.2, f:()=>{stats.missileChance=0.2;} },
-    { title: "♾️ 無限マガジン", desc: "一度の発射数+3。リロード時間がゼロになる。", 
-      classes: ['Assault'], isOwned: ()=>stats.infiniteMag, f:()=>{stats.infiniteMag=true;} },
-    { title: "⚙️ ガトリング", desc: "連射速度が限界突破し、凄まじい弾幕を張る。", 
-      classes: ['Assault'], isOwned: ()=>stats.gatling, f:()=>{stats.rate=Math.max(1, stats.rate-10); stats.gatling=true;} },
-    { title: "🔥 オーバーヒート", desc: "撃ち続けると連射速度が上がるが、自分が僅かにダメージを受ける。", 
-      classes: ['Assault'], isOwned: ()=>stats.overheat, f:()=>{stats.overheat=true;} },
-    { title: "🦶 リコイルジャンプ", desc: "射撃の反動で後ろに下がるようになり、機動力が上がる。", 
-      classes: ['Assault'], isOwned: ()=>stats.recoilJump, f:()=>{stats.recoilJump=true;} },
-
-    // === ヴァンガード (Melee) ===
-    { title: "🦍 タイタン", desc: "HP2倍、サイズ1.5倍。攻撃判定も巨大化。", 
-      classes: ['Melee'], isOwned: ()=>stats.titan, f:()=>{player.maxHp*=2; player.hp*=2; player.size*=1.5; stats.titan=true;} },
-    { title: "⚫ ブラックホール", desc: "オーラが敵を強力に吸い寄せるようになる。", 
-      classes: ['Melee'], isOwned: ()=>stats.blackHole, f:()=>{stats.blackHole=true;} },
-    { title: "⚔️ ブレードストーム", desc: "回転刃の枚数が+4枚追加される。", 
-      classes: ['Melee'], isOwned: ()=>stats.bladeStorm, f:()=>{stats.bladeStorm=true;} },
-    { id: 'earthquake', title: "🌎 アースクエイク", desc: "2秒ごとに画面全体攻撃を行い、敵を気絶させる。", 
-      classes: ['Melee'], isOwned: ()=>stats.earthquake, f:()=>{stats.earthquake=true;} },
-    { title: "🌵 スパイクリフレクト", desc: "敵接触時のダメージを2倍にして反射する。", 
-      classes: ['Melee'], isOwned: ()=>stats.spikeReflect, f:()=>{stats.spikeReflect=true;} },
-    { title: "🧛 ブラッドラスト", desc: "敵を倒すとHPが1%回復する。", 
-      classes: ['Melee'], isOwned: ()=>stats.bloodLust, f:()=>{stats.bloodLust=true;} },
-    { title: "🤺 パリィ", desc: "15%の確率でダメージを無効化し、周囲を吹き飛ばす。", 
-      classes: ['Melee'], isOwned: ()=>stats.parry, f:()=>{stats.parry=true;} },
-    { title: "🌊 ソードウェーブ", desc: "回転刃から定期的に真空波が飛び、遠くの敵を斬る。", 
-      classes: ['Melee'], isOwned: ()=>stats.swordWave, f:()=>{stats.swordWave=true;} },
-
-    // === スナイパー (Sniper) ===
-    { title: "🚅 レールガン", desc: "弾速2倍、サイズ2倍。全ての敵を貫通する。", 
-      classes: ['Sniper'], isOwned: ()=>stats.railgun, f:()=>{stats.bulletSpeed*=2; stats.railgun=true; stats.infinitePierce=true;} },
-    { title: "🔪 処刑人", desc: "HP30%以下の敵に攻撃すると即死させる。", 
-      classes: ['Sniper'], isOwned: ()=>stats.execute, f:()=>{stats.execute=true;} },
-    { title: "👁️ デッドアイ", desc: "全ての攻撃がクリティカル(3倍ダメージ)になる。", 
-      classes: ['Sniper'], isOwned: ()=>stats.deadeye, f:()=>{stats.deadeye=true;} },
-    { id: 'electroFence', title: "⚡ エレクトロフェンス", desc: "周囲の敵を麻痺させ、弾き飛ばす電気柵を展開。", 
-      classes: ['Sniper'], isOwned: ()=>stats.electroFence, f:()=>{stats.electroFence=true;} },
-    { title: "💥 チェーンバースト", desc: "敵を倒すと連鎖爆発が発生し、周囲を巻き込む。", 
-      classes: ['Sniper'], isOwned: ()=>stats.chainBurst, f:()=>{stats.chainBurst=true;} },
-    { title: "☄️ 天罰", desc: "ランダムな位置に強力な衛星レーザーが降り注ぐ。", 
-      classes: ['Sniper'], isOwned: ()=>stats.orbital, f:()=>{stats.orbital=true;} },
-    { title: "👻 ファントムバレット", desc: "壁や敵をすり抜け、画面外から戻ってくる魔法の弾丸。", 
-      classes: ['Sniper'], isOwned: ()=>stats.phantom, f:()=>{stats.phantom=true; stats.ghostShot=true;} },
-    { title: "🎯 サーマルスコープ", desc: "画面外の敵にもホーミングが適用され、クリティカル率が上がる。", 
-      classes: ['Sniper'], isOwned: ()=>stats.thermal, f:()=>{stats.thermal=true; stats.homing+=2;} },
-
-    // === ガーディアン (Guardian) ===
-    { title: "🏗️ セントリーシステム", desc: "10秒ごとに自動攻撃タレットを設置する。", 
-      classes: ['Guardian'], isOwned: ()=>stats.sentrySystem, f:()=>{stats.sentrySystem=true; spawnSentry();} },
-    { title: "🏯 シージモード", desc: "立ち止まっている間、攻撃速度とダメージが2倍。", 
-      classes: ['Guardian'], isOwned: ()=>stats.siegeMode, f:()=>{stats.siegeMode=true;} },
-    { title: "⚡ リアクティブアーマー", desc: "ダメージを受けると、周囲に電撃カウンターを放つ。", 
-      classes: ['Guardian'], isOwned: ()=>stats.reactiveArmor, f:()=>{stats.reactiveArmor=true;} },
-    { title: "❤️ ナノマシン修復", desc: "HPが30%以下になると超高速で自然回復する。", 
-      classes: ['Guardian'], isOwned: ()=>stats.nanoRepair, f:()=>{stats.nanoRepair=true;} },
-    { title: "💣 クラスターマイン", desc: "ダッシュ時に大量の地雷をばら撒く。", 
-      classes: ['Guardian'], isOwned: ()=>stats.clusterMine, f:()=>{stats.clusterMine=true;} },
-    { title: "🛡️ フォースフィールド", desc: "定期的にダメージを完全無効化するバリアを展開。", 
-      classes: ['Guardian'], isOwned: ()=>stats.forceField, f:()=>{stats.forceField=true;} },
-    { title: "🚁 護衛ドローン", desc: "プレイヤーの周囲を旋回し、近づく敵を迎撃するドローンを配備。", 
-      classes: ['Guardian'], isOwned: ()=>stats.guardDrone, f:()=>{stats.guardDrone=true;} },
-    { title: "🏰 移動要塞", desc: "移動速度が半減する代わりに、防御力とHPが大幅に上昇する。", 
-      classes: ['Guardian'], isOwned: ()=>stats.armor>=25, f:()=>{stats.spd*=0.5; stats.armor+=10; player.maxHp+=500; player.hp+=500;} },
-
-    // === アルケミスト (Alchemist) ===
-    { title: "☣️ パンデミック", desc: "毒を受けた敵が死ぬと、その場に毒ガスを発生させる。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.pandemic, f:()=>{stats.pandemic=true;} },
-    { title: "🧪 神経毒", desc: "毒ガスの範囲内にいる敵の移動速度を大幅に下げる。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.neurotoxin, f:()=>{stats.neurotoxin=true;} },
-    { title: "🧊 コールドフラスコ", desc: "攻撃時、10%の確率で敵を凍結させる。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.coldFlask, f:()=>{stats.coldFlask=true;} },
-    { title: "🤢 腐食液", desc: "毒ガスのダメージ間隔が半分になり、火力が倍増する。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.corrosion, f:()=>{stats.corrosion=true;} },
-    { title: "💊 違法な興奮剤", desc: "移動速度+20、連射速度+20%。ただし被ダメージが1.5倍になる。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.drugMode, f:()=>{stats.spd+=20; stats.rate-=5; stats.armor-=5; stats.drugMode=true;} },
-    { title: "🌧️ アシッドレイン", desc: "3秒ごとにランダムな場所に強力な酸の雨（毒沼）を降らせる。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.acidRain, f:()=>{stats.acidRain=true;} },
-    { title: "🧟 ゾンビウイルス", desc: "倒した敵が一定確率で味方のミニオンとして復活する。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.zombieVirus, f:()=>{stats.zombieVirus=true;} },
-    { title: "⚗️ ケミカル・バーン", desc: "毒状態の敵に攻撃すると、追加で爆発ダメージを与える。", 
-      classes: ['Alchemist'], isOwned: ()=>stats.chemicalBurn, f:()=>{stats.chemicalBurn=true;} },
-
-    // === トリックスター (Trickster) ===
-    { title: "🎰 スロットマシン", desc: "5秒ごとにランダムなステータスが劇的に変化する。", 
-      classes: ['Trickster'], isOwned: ()=>stats.slotMachine, f:()=>{stats.slotMachine=true;} },
-    { title: "🃏 ジョーカー", desc: "HPが減るほど、クリティカル率と回避率が超上昇する。", 
-      classes: ['Trickster'], isOwned: ()=>stats.joker, f:()=>{stats.joker=true;} },
-    { title: "🎲 ロシアンルーレット", desc: "1/6の確率でダメージが10倍になるが、たまに不発になる。", 
-      classes: ['Trickster'], isOwned: ()=>stats.russianRoulette, f:()=>{stats.russianRoulette=true;} },
-    { title: "✨ マジックカード", desc: "弾が敵を貫通し、壁で跳ね返るようになる。", 
-      classes: ['Trickster'], isOwned: ()=>stats.shotBounce, f:()=>{stats.pierce+=2; stats.shotBounce=true;} },
-    { title: "💰 ジャックポット", desc: "敵を倒した時、稀に大量の経験値オーブが爆発四散する。", 
-      classes: ['Trickster'], isOwned: ()=>stats.jackpot, f:()=>{stats.jackpot=true;} },
-    { title: "🌀 カオス弾", desc: "弾が不規則に蛇行し、サイズもバラバラになる。", 
-      classes: ['Trickster'], isOwned: ()=>stats.chaosShot, f:()=>{stats.chaosShot=true;} },
-    { title: "🎲 ラッキーセブン", desc: "7発ごとの攻撃が必ずクリティカル＆範囲攻撃になる。", 
-      classes: ['Trickster'], isOwned: ()=>stats.luckySeven, f:()=>{stats.luckySeven=true;} },
-    { title: "🃏 ワイルドカード", desc: "他のクラスの禁断の力（スキル）がランダムで1つ発動する。", 
-      classes: ['Trickster'], isOwned: ()=>stats.wildCard, f:()=>{stats.wildCard=true;} }
-];
-
-// --- 第1次進化 (Level 5) ---
-const EVO_DATA = [
-    { id: 'Samurai', icon: '⚔️', title: '侍・剣豪', desc: '一閃: 射程は短いが、前方の敵を一瞬で葬る「斬撃」を放つ。', 
-      color: '#ffffff', func: ()=>{
-        stats.samuraiMode = true; stats.rate = 20; stats.dmg = 300; 
-        stats.spd += 5; stats.pierce = 999; stats.knockback = 0;
-      }},
-    { id: 'Tempest', icon: '⚡', title: '雷帝', desc: '天変地異: 常に周囲に落雷が発生し、攻撃弾も連鎖雷撃を引き起こす。', 
-      color: '#8A2BE2', func: ()=>{
-        stats.tempestMode = true; stats.rate = 8; stats.dmg = 15; 
-        stats.lightning = 3; stats.bulletSpeed = 25;
-      }},
-    { id: 'Assault', icon: '🔫', title: 'アサルト', desc: '連射特化: マシンガン(連射・2発・貫通)解禁', 
-      color: '#00ffff', func: ()=>{
-        stats.rate=4; stats.dmg+=10; stats.multi=1; stats.pierce=1;
-      }},
-    { id: 'Melee', icon: '🛡️', title: 'ヴァンガード', desc: '近接: 超・広範囲 & HP+500/リジェネ+10', 
-      color: '#ff3333', func: ()=>{
-        stats.aura=true; stats.auraRange=180; stats.spd+=1; 
-        player.maxHp+=500; player.hp+=500; stats.regen+=10;
-      }},
-    { id: 'Sniper', icon: '🔭', title: 'スナイパー', desc: '遠距離: 💥破片 & 🔙ノックバック', 
-      color: '#ffff00', func: ()=>{
-        stats.rate=35; stats.dmg=200; stats.pierce=2; stats.bulletSpeed=30; stats.multi=0;
-        stats.drones+=1; stats.shrapnel=true; stats.knockback=1;
-      }},
-    { id: 'Guardian', icon: '🧱', title: 'ガーディアン', desc: '機動要塞: タレット8基展開・反射装甲・高耐久', 
-      color: '#00ff88', func: ()=>{
-        stats.armor+=20; player.maxHp+=1500; player.hp=player.maxHp; 
-        stats.spd-=0.5; stats.magnet+=200; stats.sentryRate=2.5; 
-        stats.sentryMax=6; stats.sentrySystem=true; spawnSentry(); stats.spikeReflect=true;
-      }},
-    { id: 'Alchemist', icon: '⚗️', title: 'アルケミスト', desc: '毒物劇物: 毒ガス・凍結・弱体化をバラ撒く', 
-      color: '#aa00ff', func: ()=>{
-        stats.poison = 5; stats.dmg *= 0.7; stats.rate *= 0.9; 
-        stats.alchemistMode = true; stats.neurotoxin = false; stats.pandemic = false;
-      }},
-    { id: 'Trickster', icon: '🃏', title: 'トリックスター', desc: '運否天賦: 弾の性能が毎回ランダムに変化する。', 
-      color: '#ff00ff', func: ()=>{
-        stats.rate = 5; stats.dmg = 18; stats.tricksterMode = true; 
-        stats.slotMachine = false; stats.joker = false;
-      }}
-];
-
-// --- 第2次進化 (Level 40) ---
-const SECOND_EVO_DATA = [
-    // Samurai
-    { parent: 'Samurai', id: 'Ashura', icon: '👹', title: '阿修羅', desc: '乱舞: 攻撃速度が極限まで上昇し、目にも止まらぬ連続斬りを繰り出す。', 
-      color: '#ff0033', func: ()=>{ stats.rate = 15; stats.dmg *= 0.8; } },
-    { parent: 'Samurai', id: 'Kensei', icon: '🌀', title: '剣聖', desc: '真空波: 斬撃と同時に、遠くまで飛ぶ鋭い衝撃波を放つ。', 
-      color: '#ccccff', func: ()=>{ stats.swordWave = true; stats.dmg *= 1.5; } },
-
-    // Tempest
-    { parent: 'Tempest', id: 'Thor', icon: '⛈️', title: 'トール', desc: '雷神: 落雷の同時攻撃数が劇的に増え、画面全体を焼き払う。', 
-      color: '#ffff00', func: ()=>{ stats.lightning += 5; stats.lightningDmgMult = 2.0; } },
-    { parent: 'Tempest', id: 'PlasmaLord', icon: '⚛️', title: 'プラズマロード', desc: '球状稲妻: 弾が「超低速で進みながら周囲を感電させる球体」に変化する。', 
-      color: '#aa00ff', func: ()=>{ stats.bulletSpeed = 3; stats.pierce = 999; stats.dmg *= 2.0; player.size = 20; } },
-
-    // Alchemist
-    { parent: 'Alchemist', id: 'NecroToxin', icon: '🧟', title: 'ネクロトキシコロジスト', desc: '死者蘇生: 毒で倒した敵が高確率で味方のゾンビとして蘇る。', 
-      color: '#00ff00', func: ()=>{ stats.zombieVirus = true; } },
-    { parent: 'Alchemist', id: 'MadScientist', icon: '💥', title: 'マッドサイエンティスト', desc: '連鎖爆発: 毒ガスが引火性になり、攻撃を当てると大爆発を起こす。', 
-      color: '#ff00ff', func: ()=>{ stats.chemicalBurn = true; stats.dmg *= 1.5; } },
-
-    // Trickster
-    { parent: 'Trickster', id: 'Gambler', icon: '🎰', title: 'ギャンブラー', desc: 'ジャックポット: 敵撃破時の経験値獲得量が稀に100倍になる。', 
-      color: '#ffd700', func: ()=>{ stats.jackpotChance = 0.1; } },
-    { parent: 'Trickster', id: 'JokerMaster', icon: '🃏', title: 'ジョーカー', desc: 'ワイルドカード: 全クラスの最強スキルがランダムで発動する。', 
-      color: '#ffffff', func: ()=>{ stats.wildCard = true; } },
-
-    // Assault
-    { parent: 'Assault', id: 'ClusterStriker', icon: '💥', title: 'クラスター・ストライカー', desc: '爆発特化: 着弾時に「子爆弾」が周囲に飛び散り、誘爆連鎖を引き起こす。', 
-      color: '#ff8800', func: ()=>{ stats.clusterStriker = true; stats.dmg *= 1.2; } },
-    { parent: 'Assault', id: 'BulletStorm', icon: '🌪️', title: 'バレット・ストーム', desc: '弾幕特化: 攻撃中、連射速度と拡散範囲が無限に上昇する。画面を埋め尽くせ！', 
-      color: '#0088ff', func: ()=>{ stats.bulletStorm = true; } },
-
-    // Melee
-    { parent: 'Melee', id: 'FlyingSwords', icon: '🗡️', title: '御剣', desc: '遠隔斬撃: 回転刃がプレイヤーから離れ、自律して敵を追尾・切り刻む。', 
-      color: '#ff0066', func: ()=>{ /* ロジック側で処理 */ } },
-    { parent: 'Melee', id: 'SunCrusher', icon: '☀️', title: 'サン・クラッシャー', desc: '灼熱領域: 停止中にエネルギー充填。移動開始時に超広範囲の爆熱波を放つ。', 
-      color: '#ffd700', func: ()=>{ stats.auraRange += 50; } },
-
-    // Sniper
-    { parent: 'Sniper', id: 'DimensionWalker', icon: '🌌', title: 'ディメンション・ウォーカー', desc: '次元干渉: 弾が画面端をループする度、巨大化し威力が倍増する。', 
-      color: '#88ff88', func: ()=>{ stats.ghostShot = true; stats.infinitePierce = true; } },
-    { parent: 'Sniper', id: 'PrismShooter', icon: '💎', title: 'プリズム・シューター', desc: '幾何学反射: 弾が敵や壁に当たるたびに2つに分裂し、レーザー網を形成する。', 
-      color: '#ff00ff', func: ()=>{ stats.prismSplit = true; stats.dmg *= 0.8; } },
-
-    // Guardian
-    { parent: 'Guardian', id: 'TeslaEngineer', icon: '⚡', title: 'テスラ・エンジニア', desc: '電気柵: 設置したタレット同士が「高圧電流」で接続され、触れた敵を焼き尽くす。', 
-      color: '#00ffcc', func: ()=>{ stats.teslaGrid = true; stats.sentryMax = 12; } },
-    { parent: 'Guardian', id: 'EarthShaker', icon: '🦍', title: 'アース・シェイカー', desc: '重戦車: 巨大化し、歩くだけで足元に衝撃波が発生。敵を弾き飛ばし粉砕する。', 
-      color: '#885500', func: ()=>{ stats.isEarthShaker = true; player.size = 30; player.maxHp += 1000; player.hp += 1000; stats.armor += 10; } }
-];
-
-// 1. 敵の出現パターン（WAVEデータ）
-// time: 開始時間(秒), enemies: その時間帯に出る敵のリスト
-const WAVE_DATA = [
-    { time: 0,   enemies: ['normal'] },
-    { time: 30,  enemies: ['normal', 'splitter'] },
-    { time: 60,  enemies: ['normal', 'splitter', 'bat'] },
-    { time: 120, enemies: ['normal', 'bat', 'dasher'] },
-    { time: 150, enemies: ['splitter', 'dasher', 'shooter'] },
-    { time: 180, enemies: ['dasher', 'shooter', 'tank'] },
-    { time: 240, enemies: ['shooter', 'tank',] },
-    // 時間経過でもっと難しい組み合わせを追加可能
-];
-
-// 2. スキル表示用リスト
-// key: statsの変数名, label: 表示名, color: 文字色
-const SKILL_DISPLAY_LIST = [
-    { key: 'omegaLaser',    label: '⚡ OMEGA LASER', color: '#f0f' },
-    { key: 'absoluteZero',  label: '❄️ ZERO AURA',   color: '#0ff' },
-    { key: 'titan',         label: '🦍 TITAN',       color: '#f00' },
-    { key: 'gatling',       label: '⚙️ GATLING',     color: '#0ff' },
-    { key: 'railgun',       label: '🚅 RAILGUN',     color: '#ff0' },
-    { key: 'chainBurst',    label: '💥 CHAIN BURST', color: '#0ff' },
-    { key: 'electroFence',  label: '⚡ ELECTRO FENCE', color: '#0ff' },
-    { key: 'shrapnel',      label: '💥 SHRAPNEL',    color: '#ff0' },
-    { key: 'reactiveArmor', label: '⚡ REACTIVE ARMOR', color: '#0f0' },
-    // 以下、条件付き表示やフォーマットが必要なものは別途処理しますが、基本はここに足すだけ
-];
-
-// ★ スキル効果の定義（ロジックの分離）
-// ここに書くことで game.js を汚さずに複雑なスキルを追加できる
-
-// ファントムストライク（攻撃時、確率で追撃）
-SkillSystem.on('onHit', (ctx) => {
-    // 必要なデータを取り出す
-    const { enemy, dmg, isPhantom } = ctx;
-
-    // 条件判定: スキル未取得、または既に追撃(Phantom)なら発動しない
-    if (!stats.phantomStrike || stats.phantomStrike <= 0 || isPhantom) return;
-
-    // 発動確率
-    let chance = 0.2 + (stats.phantomStrike * 0.1);
-    if (Math.random() > chance) return;
-
-    // クラスごとの効果分岐
-    let phantomDmg = dmg * 0.5;
-    let isCrit = false;
-    let target = enemy; // 基本は攻撃した相手
-
-    if(player.class === 'Samurai' || player.subClass === 'Ashura' || player.subClass === 'Kensei') {
-        phantomDmg = dmg * 1.0; isCrit = true; 
-    } else if(player.class === 'Sniper' || player.subClass === 'DimensionWalker') {
-        // スナイパーは最も弱った敵を狙う
-        let weakest = null; let minHp = Infinity;
-        enemies.forEach(tg => { if(!tg.dead && tg.hp < minHp) { minHp=tg.hp; weakest=tg; } });
-        if(weakest && weakest !== enemy) {
-            target = weakest;
-            phantomDmg = dmg * 1.5;
-        }
-    } else if(player.class === 'Melee' || player.class === 'Vanguard') {
-        phantomDmg = dmg * 0.3;
-        //if(player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 0.5);
-    } else if(player.class === 'Assault') {
-        phantomDmg = dmg * 0.3;
-        // アサルトは少し遅れてダメージ（別関数呼び出しが必要なため、ここでは即時適用とする簡易化も可だが、元の挙動を再現）
-        // ※setTimeoutはthis等のコンテキストに注意が必要だが、ここではシンプルに実装
-    } else if(player.class === 'Guardian') {
-        phantomDmg = dmg * 0.3;
-        // 周囲の敵を引き寄せる
-        enemies.forEach(sub => {
-            if(!sub.dead && Math.hypot(sub.x-enemy.x, sub.y-enemy.y) < 100) {
-                sub.x += (sub.x - enemy.x) * 0.1; sub.y += (sub.y - enemy.y) * 0.1;
-            }
-        });
-    } else if(player.class === 'Alchemist') {
-        phantomDmg = dmg * 0.4;
-        enemy.hpDamageTakenMult = 1.2; // 被ダメアップデバフ(概念)
-        phantomDmg += 10; 
-    } else if(player.class === 'Trickster') {
-        phantomDmg = dmg * (Math.random() * 5.0);
-    } else if(player.class === 'Tempest') {
-        phantomDmg = dmg * 0.6; enemy.frozen = 30;
-    }
-
-    // 追撃ダメージ適用（isPhantomフラグをtrueにして無限ループ防止）
-    damageEnemy(target, phantomDmg, true);
+function loop(timestamp) {
+    if(!gameActive) return;
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+    let timeScale = dt / (1000 / 60);
+    if(timeScale > 4) timeScale = 4;
     
-    // エフェクト
-    if(target) {
-        createParticles(target.x, target.y, '#222', 1, target.size);
-    }
-});
+    Sound.update();
 
-SkillSystem.on('onBeforeDamage', (ctx) => {
-    const { enemy } = ctx;
+    update(timeScale);
+    draw(); // Defined in ui.js
+    requestAnimationFrame(loop);
+}
 
-    // 1. ジャイアントキラー (ボス・タンク特攻)
-    if(stats.giantSlayer && (enemy.type === 'boss' || enemy.ai === 'tank')) {
-        ctx.dmg *= 2;
-    }
+function update(ts) {
+    // 1. システム・時間管理
+    let gameTimeSec = updateSystem(ts);
 
-    // 2. 処刑人 (残りHP20%以下で即死級ダメージ)
-    if(stats.executioner && (enemy.hp < enemy.maxHp * 0.2)) {
-        ctx.dmg = enemy.hp + 999;
-    }
+    // 2. プレイヤー状態 (移動・HP回復・CD)
+    updatePlayer(ts);
 
-    // 3. 処刑 (スナイパー用: 残りHP30%以下)
-    if(stats.execute && (enemy.hp < enemy.maxHp * 0.3)) {
-        ctx.dmg = enemy.hp + 9999;
-    }
+    // 3. スキル発動判定 (パッシブ・アクティブ)
+    updateSkills(ts);
 
-    // 4. ジャイアントキラー (割合ダメージ追加)
-    if(stats.hpDamage > 0) {
-        let percentDmg = enemy.maxHp * stats.hpDamage;
-        let cap = stats.dmg * 50; // 上限キャップ
-        ctx.dmg += Math.min(percentDmg, cap);
-    }
+    // 4. 攻撃処理 (射撃・オーラ・近接)
+    updateCombat(ts);
 
-    // 5. 鮮血の爪 (背水: HPが減るほど攻撃UP)
-    if(stats.lowHpDmg) {
-        let lostHpRatio = 1.0 - (player.hp / player.maxHp);
-        ctx.dmg *= (1.0 + lostHpRatio * 2.0);
-        // HP半分以下なら確定クリティカル扱いにフラグを立てる
-        if(lostHpRatio > 0.5) ctx.isCrit = true;
-    }
+    // 5. 弾丸・エフェクト更新 (プレイヤー弾・敵弾)
+    updateProjectiles(ts);
+
+    // 6. 敵の処理 (スポーン・AI・衝突)
+    updateEnemies(ts, gameTimeSec);
+
+    // 7. アイテム・演出 (オーブ・テキスト・パーティクル)
+    updateObjects(ts);
+}
+
+// --- Sub Functions ---
+
+function updateSystem(ts) {
+    let gameTimeSec = (Date.now() - startTime) / 1000;
     
-    // 6. シージモード (静止時ダメージ倍)
-    if(stats.siegeMode && stats.isStationary) {
-        ctx.dmg *= 2;
-    }
-});
-
-SkillSystem.on('onKill', (ctx) => {
-    const { enemy, player } = ctx; // playerも参照できるように渡す
-
-    // 1. チェーンバースト (連鎖爆発)
-    if(stats.chainBurst) {
-        Sound.play('explode', 2.0);
-        let range = 100;
-        let burstDmg = stats.dmg * 2;
-        if(Math.random() < 0.3) createParticles(enemy.x, enemy.y, '#0ff', 5, 3);
-        enemies.forEach(subE => {
-            if(!subE.dead && Math.hypot(subE.x - enemy.x, subE.y - enemy.y) < range) {
-                damageEnemy(subE, burstDmg);
-            }
-        });
+    // シンギュラリティ
+    if(level >= 100 && !singularityMode) {
+        singularityMode = true;
+        document.body.classList.add('singularity-mode');
+        Sound.play('milestone');
     }
 
-    // 2. シュラプネル (破片飛び散り)
-    if(stats.shrapnel) {
-        for(let i=0; i<3; i++) {
-            let ang = Math.random() * Math.PI * 2;
-            bullets.push({
-                type:'normal', x:enemy.x, y:enemy.y, 
-                vx:Math.cos(ang)*8, vy:Math.sin(ang)*8, 
-                size:3, hit:[enemy.id], pierce:1, isMini:true, life:15
+    // 時間表示
+    let m = Math.floor(gameTimeSec/60);
+    let s = Math.floor(gameTimeSec%60);
+    document.getElementById('disp-time').innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+
+    if(screenShake > 0) screenShake *= 0.9;
+    
+    return gameTimeSec;
+}
+
+function updatePlayer(ts) {
+    // ★修正: 変数が未定義の場合に初期化する処理を追加
+    if(typeof player.shootCd === 'undefined') player.shootCd = 0;
+    if(typeof player.missileCd === 'undefined') player.missileCd = 0;
+
+    // クールダウン減算
+    if(player.dashCd > 0) player.dashCd -= ts;
+    if(player.invincible > 0) player.invincible -= ts;
+    if(player.slamCd > 0) player.slamCd -= ts;
+    if(player.missileCd > 0) player.missileCd -= ts; 
+    if(player.shootCd > 0) player.shootCd -= ts;     
+
+    // 自然回復
+    if(Math.random() < (1/60) * ts && player.hp < player.maxHp) {
+        player.hp = Math.min(player.maxHp, player.hp + stats.regen);
+        updateUI();
+    }
+    // ナノリペア
+    if(stats.nanoRepair && player.hp < player.maxHp * 0.3) {
+        player.hp = Math.min(player.maxHp, player.hp + (50/60)*ts);
+    }
+
+    // 移動入力
+    let dx = 0, dy = 0;
+    if(keys['w'] || keys['ArrowUp']) dy = -1;
+    if(keys['s'] || keys['ArrowDown']) dy = 1;
+    if(keys['a'] || keys['ArrowLeft']) dx = -1;
+    if(keys['d'] || keys['ArrowRight']) dx = 1;
+    if(joyTouchId !== null) { dx = joyMoveX; dy = joyMoveY; }
+
+    if(dx!==0 || dy!==0) {
+        let len = Math.hypot(dx, dy);
+        if(len > 1) { dx/=len; dy/=len; }
+        player.x += dx * stats.spd * ts;
+        player.y += dy * stats.spd * ts;
+        stats.isStationary = false;
+        player.isMoving = true;
+        
+        // アースシェイカー(移動時攻撃)
+        if(stats.isEarthShaker && Math.floor(Date.now() / 200) % 2 === 0) { 
+            screenShake = 2;
+            enemies.forEach(e => {
+                if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < player.size + 40) {
+                    damageEnemy(e, stats.dmg * 0.5); 
+                    let pushAng = Math.atan2(e.y - player.y, e.x - player.x);
+                    e.x += Math.cos(pushAng) * 10 * ts; e.y += Math.sin(pushAng) * 10 * ts; 
+                }
             });
         }
+    } else {
+        stats.isStationary = true;
+        player.isMoving = false;
     }
 
-    // 3. ネクロマンサー (怨霊召喚)
-    if(stats.necromancer) {
-        bullets.push({type: 'spirit', x: enemy.x, y: enemy.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
+    // ドッペルゲンガー位置
+    if(stats.doppelganger) {
+        if(!player.clone) player.clone = {x:player.x, y:player.y};
+        let lerp = 0.1;
+        let targetX = player.x - (player.isMoving ? Math.sign(player.x - player.clone.x)*40 : 40);
+        player.clone.x += (targetX - player.clone.x) * lerp;
+        player.clone.y += (player.y - player.clone.y) * lerp;
     }
+}
 
-    // 4. ブラッドラスト (撃破時HP1%回復)
-    if(stats.bloodLust) { 
-        player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01);
-        updateUI(); // UI更新が必要
-    }
+function updateSkills(ts) {
+    // アクティブスキル
+    activeSkills.forEach(skill => {
+        if(skill.def && skill.def.onUpdate) skill.def.onUpdate(skill, ts);
+    });
 
-    // 5. ジャックポット (経験値爆発)
-    if(stats.jackpot && Math.random() < 0.05) { 
-        Sound.play('levelup');
-        for(let k=0; k<5; k++) {
-            let angle = Math.random() * Math.PI * 2;
-            let dist = Math.random() * 30;
-            expOrbs.push({
-                x: enemy.x + Math.cos(angle)*dist, y: enemy.y + Math.sin(angle)*dist, 
-                size: 8, val: 100, color: '#ffd700', pitch: 1.5
-            });
-        }
-        if(texts.length < MAX_TEXTS) texts.push({x:enemy.x, y:enemy.y, str:"JACKPOT!", life:60, color:'#ffd700'});
-    }
-
-    // 6. ライフスティール (固定値回復)
-    if(stats.lifesteal > 0) { 
-        player.hp = Math.min(player.maxHp, player.hp + stats.lifesteal); 
-        updateUI(); 
-    }
-});
-
-const ACTIVE_SKILLS_DATA = {
-    'earthquake': {
-        interval: 120, // クールダウンフレーム数
-        onUpdate: (state, ts) => {
-            state.timer -= ts;
-            if(state.timer <= 0) {
-                state.timer = 120; // リセット
-                
-                // --- 旧 game.js にあったロジック ---
-                screenShake = 15; 
-                Sound.play('bash');
-                // stats.dmg などを参照して攻撃
-                enemies.forEach(e => { if(!e.dead) damageEnemy(e, stats.dmg * 2); });
-                particles.push({type:'shockwave', x:player.x, y:player.y, size:400, life:30, color:'#f80'});
-            }
-        }
-    },
-    'electroFence': {
-        interval: 60,
-        onUpdate: (state, ts) => {
-            state.timer -= ts;
-            if(state.timer <= 0) {
-                state.timer = 60;
-                
-                // --- 旧 game.js にあったロジック ---
-                let r = 150;
-                Sound.play('spark');
-                particles.push({type:'shockwave', x:player.x, y:player.y, size:r, life:20, color:'#88ffff'});
+    // セントリー
+    if(stats.sentrySystem) {
+        sentryTimer -= ts;
+        if(sentryTimer <= 0) { spawnSentry(); sentryTimer = 600 / stats.sentryRate; }
+        sentries.forEach(s => {
+            s.cooldown -= ts;
+            if(s.cooldown <= 0) {
+                let target = null, minDSq = 400*400; 
                 enemies.forEach(e => {
-                    if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < r + e.size) {
-                        damageEnemy(e, stats.dmg);
-                        e.frozen = 30; 
-                        let ang = Math.atan2(e.y-player.y, e.x-player.x);
-                        e.x += Math.cos(ang) * 30; e.y += Math.sin(ang) * 30; 
-                        createLightningEffect(player.x, player.y, e.x, e.y);
+                    if(e.dead) return;
+                    let dSq = (e.x - s.x)**2 + (e.y - s.y)**2;
+                    if(dSq < minDSq) { minDSq = dSq; target = e; }
+                });
+                if(target) {
+                    let ang = Math.atan2(target.y - s.y, target.x - s.x);
+                    bullets.push({type:'normal', x:s.x, y:s.y, vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, size:6, color:'#0f0', hit:[], pierce:stats.pierce});
+                    Sound.play('shoot', 1.5);
+                    s.cooldown = Math.max(5, stats.rate * (1/stats.sentryRate));
+                }
+            }
+        });
+        // テスラグリッド
+        if(stats.teslaGrid && sentries.length >= 2) {
+            for(let i=0; i<sentries.length; i++) {
+                let s1 = sentries[i], s2 = sentries[(i+1)%sentries.length];
+                enemies.forEach(e => {
+                    if(!e.dead && pointToLineDistance(e.x, e.y, s1.x, s1.y, s2.x, s2.y) < e.size + 5) {
+                        damageEnemy(e, stats.dmg * 2.0);
+                        if(Math.random()<0.2*ts) createParticles(e.x, e.y, '#0ff', 2, 2);
                     }
                 });
             }
         }
     }
-};
+
+    // スロットマシン
+    if(stats.slotMachine) {
+        if(typeof player.slotTimer === 'undefined') player.slotTimer = 300;
+        player.slotTimer -= ts;
+        if(player.slotTimer <= 0) {
+            player.slotTimer = 300; Sound.play('powerup');
+            let luck = Math.random();
+            if(luck < 0.3) { stats.rate = 2; texts.push({x:player.x, y:player.y-20, str:"FEVER!!", life:60, color:'#ff0'}); } 
+            else if(luck < 0.6) { stats.bulletSpeed = 40; texts.push({x:player.x, y:player.y-20, str:"SPEED UP!", life:60, color:'#0ff'}); } 
+            else if(luck < 0.8) { player.size = 50; texts.push({x:player.x, y:player.y-20, str:"BIG MODE", life:60, color:'#f00'}); } 
+            else { stats.multi = 10; texts.push({x:player.x, y:player.y-20, str:"MULTI!!", life:60, color:'#f0f'}); }
+            setTimeout(()=>{ stats.rate = 5; stats.bulletSpeed = 16; player.size = 15; stats.multi = 1; }, 3000);
+        }
+    }
+
+    // オメガレーザー
+    if(stats.omegaLaser) {
+        player.laserCd = (player.laserCd || 0) - ts;
+        if(player.laserCd <= 0) { fireOmegaLaser(); player.laserCd = 180; }
+    }
+
+    // ヴォイドリフト
+    if(stats.voidRift > 0) {
+        if(typeof player.voidTimer === 'undefined') player.voidTimer = 0;
+        player.voidTimer -= ts;
+        if(player.voidTimer <= 0) {
+            let interval = Math.max(10, Math.max(20, 120 - (stats.voidRift * 5)) * (stats.rate / 20));
+            player.voidTimer = interval;
+            let targets = enemies.filter(e => !e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 600);
+            if(targets.length > 0) {
+                let count = 1 + Math.floor(stats.voidRift / 5);
+                for(let k=0; k<count; k++) {
+                    if(targets.length === 0) break;
+                    let idx = Math.floor(Math.random() * targets.length);
+                    triggerVoidRift(targets[idx]); targets.splice(idx, 1);
+                }
+            }
+        }
+    }
+
+    // テンペスト雷
+    if(stats.tempestMode && Math.random() < 0.1 * ts) { 
+        let targets = enemies.filter(e => !e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 500);
+        if(targets.length > 0) triggerLightning(targets[Math.floor(Math.random() * targets.length)], stats.lightning);
+    }
+
+    // アブソリュートゼロ
+    if(stats.absoluteZero) {
+        enemies.forEach(e => {
+            if(!e.dead && Math.hypot(e.x-player.x, e.y-player.y) < 200 && Math.random() < 0.5) e.frozen = 2;
+        });
+        if(Math.random() < 0.2*ts && particles.length < MAX_PARTICLES) createParticles(player.x + (Math.random()-0.5)*500, player.y + (Math.random()-0.5)*500, '#88ffff', 1, 1);
+    }
+    
+    // フォースフィールド
+    if(stats.forceField && stats.forceFieldCd > 0) stats.forceFieldCd -= ts;
+    
+    // オービタル
+    if(stats.orbital && Math.random() < 0.05 * ts) {
+        let t = enemies[Math.floor(Math.random()*enemies.length)];
+        if(t && !t.dead) {
+            createParticles(t.x, t.y, '#f0f', 10, 3); damageEnemy(t, stats.dmg * 5); Sound.play('laser');
+            particles.push({type:'shockwave', x:t.x, y:t.y, size:50, life:10, color:'#f0f'});
+        }
+    }
+    
+    // 毒ガス発生
+    if(stats.poison > 0 && Math.random() < (1/30)*ts) {
+        let spawnCount = Math.max(1, Math.floor(stats.multi));
+        let targets = enemies.filter(e => !e.dead && Math.hypot(e.x - player.x, e.y - player.y) < 500);
+        for(let k=0; k<spawnCount; k++) {
+            if(targets.length === 0 && k===0) {
+                gasClouds.push({ x: player.x, y: player.y, r: (30 + stats.poison * 10) * stats.areaScale, life: (180 + stats.poison * 30) * stats.duration, dmg: stats.dmg * (0.2 + stats.poison * 0.1), tick: 0 }); break;
+            } else if(targets.length > 0) {
+                let idx = Math.floor(Math.random() * targets.length); let t = targets[idx];
+                gasClouds.push({ x: t.x, y: t.y, r: (30 + stats.poison * 10) * stats.areaScale, life: (180 + stats.poison * 30) * stats.duration, dmg: stats.dmg * (0.2 + stats.poison * 0.1), tick: 0 });
+                targets.splice(idx, 1);
+            }
+        }
+    }
+}
+
+function updateCombat(ts) {
+    // 1. オーラ攻撃
+    if(stats.aura) {
+        let r = stats.auraRange * stats.auraScale * stats.areaScale;
+        let auraRate = 0.1 + (player.class === 'Melee' && stats.homing > 0 ? stats.homing * 0.05 : 0);
+        
+        if(player.subClass === 'SunCrusher') {
+            if(player.isMoving && player.sunCharge > 0) {
+                player.sunCharge -= ts * 5; r += player.sunCharge * 2; auraRate = 0.5;
+                if(Math.random() < 0.3) createParticles(player.x+(Math.random()-0.5)*r, player.y+(Math.random()-0.5)*r, '#fa0', 1, 3);
+            } else if(!player.isMoving) {
+                player.sunCharge = Math.min(100, player.sunCharge + ts); r = 10;
+                if(Math.random()<0.1) createParticles(player.x, player.y, '#fa0', 1, 1);
+            }
+        }
+
+        enemies.forEach(e => { 
+            if(e.dead) return;
+            let dist = Math.hypot(e.x-player.x, e.y-player.y);
+            if(dist < r + e.size) {
+                if(Math.random() < auraRate * ts) {
+                    let d = stats.dmg;
+                    if(player.class === 'Melee' || player.class === 'Guardian') d += (player.maxHp * 0.05) + (stats.armor * 10);
+                    if(player.subClass === 'SunCrusher' && player.isMoving) d *= (1 + player.sunCharge/20);
+                    damageEnemy(e, d);
+                    if(player.class === 'Melee' && stats.lightning > 0 && Math.random() < 0.3) triggerLightning(e, stats.lightning);
+                }
+                if(stats.gravityAura || stats.blackHole) {
+                    let pull = (stats.blackHole ? 3.0 : 1.0) * ts; 
+                    e.x += (player.x - e.x) / dist * pull; e.y += (player.y - e.y) / dist * pull;
+                }
+            } 
+        });
+    } 
+    // 2. 射撃
+    else {
+        let currentRate = stats.rate;
+        if(stats.siegeMode && stats.isStationary) currentRate /= 2;
+        if(stats.bulletStorm) currentRate = 3; 
+
+        if(player.shootCd <= 0) {
+            shoot();
+            if(stats.chakram > 0 && Math.random() < 0.3) fireChakram();
+            player.shootCd = currentRate;
+        }
+    }
+
+    // 3. ミサイル自動発射
+    if(stats.missile > 0) {
+        if(typeof player.missileCd === 'undefined') player.missileCd = 0;
+        player.missileCd -= ts;
+        if(player.missileCd <= 0) {
+            fireMissile();
+            player.missileCd = Math.max(10, 60 - stats.missile * 5);
+        }
+    }
+
+    // 4. ドローン
+    if(drones.length < stats.drones) drones.push({ x: player.x, y: player.y, angle: Math.random()*Math.PI*2, state: 'orbit', target: null, timer: 0 });
+    let droneSpeedMult = stats.drones > 2 ? 1.5 : 1.0; 
+    drones.forEach(d => {
+        if(d.state === 'orbit') {
+            d.angle += 0.05 * ts * droneSpeedMult;
+            let ox = player.x + Math.cos(d.angle) * 80, oy = player.y + Math.sin(d.angle) * 80;
+            d.x += (ox - d.x) * 0.1 * ts; d.y += (oy - d.y) * 0.1 * ts;
+            let minD = 350;
+            enemies.forEach(e => { if(e.dead) return; let dist = Math.hypot(e.x - player.x, e.y - player.y); if(dist < minD) { minD = dist; d.target = e; d.state = 'attack'; } });
+        } else if(d.state === 'attack') {
+            if(!d.target || d.target.dead) { d.state = 'return'; return; }
+            let ang = Math.atan2(d.target.y - d.y, d.target.x - d.x);
+            d.x += Math.cos(ang) * 12 * ts * droneSpeedMult; d.y += Math.sin(ang) * 12 * ts * droneSpeedMult;
+            if(Math.hypot(d.x - d.target.x, d.y - d.target.y) < 20) {
+                damageEnemy(d.target, stats.dmg * 2);
+                if(stats.lightning > 0) triggerLightning(d.target, stats.lightning);
+                if(particles.length < MAX_PARTICLES) createParticles(d.x, d.y, '#ff0', 5, 2);
+                d.state = 'return'; d.timer = 30 / droneSpeedMult; 
+            }
+        } else if(d.state === 'return') {
+            d.timer -= ts;
+            if(d.timer <= 0) {
+                let ox = player.x + Math.cos(d.angle) * 80, oy = player.y + Math.sin(d.angle) * 80;
+                let ang = Math.atan2(oy - d.y, ox - d.x);
+                d.x += Math.cos(ang) * 15 * ts; d.y += Math.sin(ang) * 15 * ts;
+                if(Math.hypot(ox - d.x, oy - d.y) < 20) d.state = 'orbit';
+            }
+        }
+    });
+
+    // 5. 近接回転刃 / 飛剣
+    if(player.class === 'Melee' && (stats.multi > 0 || stats.bladeStorm)) {
+        let count = stats.multi + (stats.bladeStorm ? 4 : 0);
+        if(player.subClass === 'FlyingSwords') {
+             if(flyingSwords.length !== count) { flyingSwords = []; for(let i=0; i<count; i++) flyingSwords.push({x:player.x, y:player.y, target:null, cooldown:0}); }
+             flyingSwords.forEach(sw => {
+                 if(sw.cooldown > 0) sw.cooldown -= ts;
+                 if(!sw.target || sw.target.dead || Math.hypot(sw.target.x-player.x, sw.target.y-player.y) > 400) {
+                     sw.target = null; let minD = 350;
+                     enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-player.x, e.y-player.y); if(d < minD) { minD=d; sw.target=e; } });
+                 }
+                 let tx, ty;
+                 if(sw.target) { tx = sw.target.x; ty = sw.target.y; } 
+                 else { let angle = Date.now() * 0.002 + (flyingSwords.indexOf(sw) * (Math.PI*2/count)); tx = player.x + Math.cos(angle) * 80; ty = player.y + Math.sin(angle) * 80; }
+                 sw.x += (tx - sw.x) * 0.15 * ts; sw.y += (ty - sw.y) * 0.15 * ts;
+                 enemies.forEach(e => {
+                     if(!e.dead && Math.hypot(e.x-sw.x, e.y-sw.y) < 15 && sw.cooldown <= 0) {
+                         damageEnemy(e, stats.dmg * 0.8); createParticles(e.x, e.y, '#f0a', 1, 1); sw.cooldown = 15; 
+                     }
+                 });
+             });
+        } else {
+            if(spikeBits.length !== count) { spikeBits = []; for(let i=0; i<count; i++) spikeBits.push({angle:0}); }
+            let rotSpd = 0.1 * ts;
+            spikeBits.forEach((bit, i) => {
+                bit.angle += rotSpd;
+                let currentAngle = bit.angle + (Math.PI*2/count)*i;
+                let radius = 25 + player.size/2 + (stats.titan ? 20 : 0);
+                if(stats.isColossus) radius += 20;
+                bit.x = player.x + Math.cos(currentAngle) * radius; bit.y = player.y + Math.sin(currentAngle) * radius;
+                enemies.forEach(e => {
+                    if(!e.dead && Math.hypot(e.x-bit.x, e.y-bit.y) < 15 + e.size && Math.random() < 0.1 * ts) damageEnemy(e, stats.dmg * 0.5);
+                });
+            });
+        }
+    }
+    
+    // 6. 回転オーブ
+    if(stats.spinBlade > 0) {
+        let orbitalSpeed = (Date.now() / 1000) * 2;
+        if(orbitals.length !== stats.spinBlade) { orbitals = []; for(let i=0; i<stats.spinBlade; i++) orbitals.push({}); }
+        orbitals.forEach((orb, i) => {
+            let angle = orbitalSpeed + (Math.PI * 2 / stats.spinBlade) * i;
+            orb.x = player.x + Math.cos(angle) * 110; orb.y = player.y + Math.sin(angle) * 110;
+            enemies.forEach(e => { if(!e.dead && Math.hypot(e.x-orb.x, e.y-orb.y) < 20 + e.size && Math.random() < 0.12 * ts) damageEnemy(e, stats.dmg * 1.5); });
+        });
+    }
+}
+
+function updateProjectiles(ts) {
+    // 1. プレイヤーの弾
+    for(let i=bullets.length-1; i>=0; i--) {
+        let b = bullets[i];
+        
+        // --- 特殊弾処理 ---
+        if(b.type === 'slash') {
+            b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts;
+            if(b.life > 12) {
+                enemies.forEach(e => {
+                    if(e.dead || b.hit.has(e.id)) return;
+                    let range = b.size + e.size;
+                    if((b.x - e.x)**2 + (b.y - e.y)**2 < range * range) {
+                        damageEnemy(e, stats.dmg * 2.0);
+                        if(Math.random() < 0.3) createParticles(e.x, e.y, '#fff', 3, 2); 
+                        if(stats.lightning > 0 && Math.random() < 0.05) triggerLightning(e, stats.lightning);
+                        b.hit.add(e.id);
+                    }
+                });
+            }
+            if(b.life <= 0) bullets.splice(i, 1);
+            continue;
+        }
+        else if(b.type === 'omega') {
+            b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts; b.tick = (b.tick || 0) + ts;
+            if(b.tick >= 5) {
+                b.tick = 0;
+                enemies.forEach(e => { if(!e.dead && Math.abs(e.x - b.x) < b.size && Math.abs(e.y - b.y) < b.size) { damageEnemy(e, stats.dmg * 5); if(Math.random() < 0.3) createParticles(e.x, e.y, '#f0f', 1, 1); } });
+            }
+            if(b.life <= 0) bullets.splice(i,1);
+            continue;
+        }
+        else if(b.type === 'void') {
+            b.life -= ts;
+            if(b.life <= 0) {
+                Sound.play('explode', 0.8); screenShake = 5;
+                enemies.forEach(e => { if(!e.dead && Math.hypot(e.x - b.x, e.y - b.y) < b.size + e.size) { damageEnemy(e, b.dmg); if(b.extra) b.extra(e); } });
+                createParticles(b.x, b.y, b.color, 10, 4); particles.push({type:'shockwave', x:b.x, y:b.y, size:b.size*1.5, life:20, color:b.color});
+                bullets.splice(i, 1);
+            }
+            continue; 
+        }
+        else if(b.type === 'chakram') {
+            b.x += b.vx * ts; b.y += b.vy * ts; b.life -= ts; 
+            if(b.life <= 0) { bullets.splice(i, 1); continue; }
+            let camHalfW = canvas.width / 2, camHalfH = canvas.height / 2;
+            let left = player.x - camHalfW, right = player.x + camHalfW, top = player.y - camHalfH, bottom = player.y + camHalfH;
+
+            if(b.x < left) { b.x = left; b.vx *= -1; Sound.play('bounce'); } 
+            else if(b.x > right) { b.x = right; b.vx *= -1; Sound.play('bounce'); }
+            if(b.y < top) { b.y = top; b.vy *= -1; Sound.play('bounce'); } 
+            else if(b.y > bottom) { b.y = bottom; b.vy *= -1; Sound.play('bounce'); }
+
+            for(let j=enemies.length-1; j>=0; j--) {
+                let e = enemies[j];
+                if(e.dead || b.hit.includes(e.id)) continue;
+                if(Math.hypot(b.x-e.x, b.y-e.y) < b.size + e.size) {
+                    damageEnemy(e, stats.dmg * 1.5); if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#0ff', 2, 2);
+                    if(b.bounceCd <= 0) {
+                        let ang = Math.atan2(b.y - e.y, b.x - e.x), spd = Math.hypot(b.vx, b.vy);
+                        b.vx = Math.cos(ang) * spd; b.vy = Math.sin(ang) * spd; b.bounceCd = 10; Sound.play('bounce');
+                    }
+                }
+            }
+            if(b.bounceCd > 0) b.bounceCd -= ts;
+            continue;
+        }
+
+        // --- 通常弾・誘導弾の移動 ---
+        if(b.type !== 'missile' && stats.homing > 0) {
+            let detectRange = 250 + (stats.homing * 50), target = null, minDSq = detectRange * detectRange;
+            enemies.forEach(e => { if(e.dead) return; let dSq = (e.x-b.x)**2 + (e.y-b.y)**2; if(dSq < minDSq && !b.hit.includes(e.id)) { minDSq = dSq; target = e; } });
+            if(target) {
+                let desired = Math.atan2(target.y - b.y, target.x - b.x), current = Math.atan2(b.vy, b.vx);
+                let turn = (0.05 + stats.homing * 0.05) * ts, diff = desired - current;
+                if(diff > Math.PI) diff -= Math.PI*2; if(diff < -Math.PI) diff += Math.PI*2;
+                if(Math.abs(diff) < Math.PI) { current += Math.sign(diff) * Math.min(Math.abs(diff), turn); let s = Math.hypot(b.vx, b.vy); b.vx = Math.cos(current) * s; b.vy = Math.sin(current) * s; }
+            }
+        }
+        if(b.type === 'missile' || b.type === 'spirit') {
+            let minD = 400, target = null;
+            enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-b.x, e.y-b.y); if(d < minD) { minD=d; target=e; } });
+            if(target) {
+                let ang = Math.atan2(target.y - b.y, target.x - b.x), cur = Math.atan2(b.vy, b.vx);
+                let diff = ang - cur; if(diff > Math.PI) diff -= Math.PI*2; if(diff < -Math.PI) diff += Math.PI*2;
+                cur += Math.sign(diff) * 0.1 * ts; b.vx = Math.cos(cur) * b.speed; b.vy = Math.sin(cur) * b.speed;
+            }
+            b.x += b.vx * ts; b.y += b.vy * ts; 
+
+            // ミサイルタイプでも life が設定されていれば時間を進めて消す処理
+            if(b.life !== undefined) { 
+                b.life -= ts; 
+                if(b.life <= 0) { 
+                    bullets.splice(i, 1); 
+                    continue; 
+                } 
+            }
+        } else {
+            b.x += b.vx * ts; b.y += b.vy * ts;
+            if(b.life !== undefined) { b.life -= ts; if(b.life <= 0) { bullets.splice(i, 1); continue; } }
+            if(stats.ghostShot) {
+                let w = canvas.width/2, h = canvas.height/2;
+                if(b.x < player.x-w || b.x > player.x+w || b.y < player.y-h || b.y > player.y+h) {
+                    if(b.x < player.x-w) b.x = player.x+w-5; else if(b.x > player.x+w) b.x = player.x-w+5;
+                    if(b.y < player.y-h) b.y = player.y+h-5; else if(b.y > player.y+h) b.y = player.y-h+5;
+                    b.size = Math.min(50, b.size * 1.5); b.damageMult = Math.min(8.0, (b.damageMult || 1) * 1.5);
+                    b.life = (b.life || 180) - 60; if(b.life <= 0) { bullets.splice(i, 1); continue; }
+                    b.pierce = 999;
+                }
+            } else if(Math.hypot(b.x - player.x, b.y - player.y) > 2000) { bullets.splice(i, 1); continue; }
+        }
+
+        if(stats.shotBounce && (b.type === 'normal' || b.type === 'chakram')) {
+            let l = player.x - canvas.width/2, r = player.x + canvas.width/2, t = player.y - canvas.height/2, bt = player.y + canvas.height/2;
+            if(b.x < l || b.x > r) { b.vx *= -1; Sound.play('bounce'); }
+            if(b.y < t || b.y > bt) { b.vy *= -1; Sound.play('bounce'); }
+        }
+
+        // --- 弾丸の衝突判定 ---
+        let hit = false;
+        for(let j=enemies.length-1; j>=0; j--) {
+            let e = enemies[j];
+            if(e.dead || b.hit.includes(e.id)) continue;
+            let hitSize = (player.class === 'Sniper' && b.type === 'normal') ? b.size + 15 : b.size;
+            if(stats.titan) hitSize *= 1.5;
+            let r = hitSize + e.size;
+            if(Math.abs(b.x - e.x) > r || Math.abs(b.y - e.y) > r) continue;
+            if((b.x - e.x)**2 + (b.y - e.y)**2 < r*r) {
+                if(b.type === 'missile') {
+                    Sound.play('explode'); particles.push({type:'shockwave', x:b.x, y:b.y, size:10, life:15, color:'#f80'});
+                    let blastR = 100 * stats.missileBlast, blastDmg = stats.dmg * 3 * stats.missileBlast;
+                    enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x - b.x, subE.y - b.y) < blastR) { damageEnemy(subE, blastDmg); if(stats.napalm && Math.random()<0.5) gasClouds.push({x:subE.x, y:subE.y, r:30, life:120, dmg:stats.dmg*0.2}); } });
+                    if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#f00', 10 * stats.missileBlast, 5 * stats.missileBlast);
+                    bullets.splice(i, 1); hit = true; break;
+                } else {
+                    let finalDmg = stats.dmg * (b.damageMult || 1);
+                    damageEnemy(e, finalDmg);
+                    // Hit Effects
+                    if(stats.coldFlask && Math.random() < 0.1) { e.frozen = 60; createParticles(e.x, e.y, '#0ff', 5, 2); }
+                    if(stats.knockback > 0 && !b.isMini && e.knockbackTimer <= 0) {
+                        let ang = Math.atan2(e.y - player.y, e.x - player.x), force = stats.knockback * 20 * (e.type === 'boss' ? 0.1 : 1);
+                        e.x += Math.cos(ang) * force; e.y += Math.sin(ang) * force; e.knockbackTimer = e.type === 'boss' ? 20 : 10;
+                    }
+                    if(stats.clusterStriker && !b.isMini) {
+                        Sound.play('explode', 2.0);
+                        for(let k=0; k<6; k++) { 
+                            let ang = (Math.PI*2/6)*k; 
+                            // ↓ life: 60 を追加（約1秒で自然消滅するようにする）
+                            bullets.push({
+                                type:'missile', 
+                                x:e.x, y:e.y, 
+                                vx:Math.cos(ang)*5, vy:Math.sin(ang)*5, 
+                                size:4, 
+                                speed:0, 
+                                hit:[e.id], 
+                                isMini:true, 
+                                life: 300 // ★ここを追加！ (60フレーム = 約1秒)
+                            }); 
+                        }
+                    }
+                    if(stats.prismSplit && !b.isMini && (b.splitCount || 0) < 2) {
+                        for(let k=0; k<2; k++) { let ang = Math.atan2(b.vy, b.vx) + (k===0 ? 0.5 : -0.5); bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*stats.bulletSpeed, vy:Math.sin(ang)*stats.bulletSpeed, size:b.size*0.8, hit:[e.id], pierce:0, isMini:false, color:'#f0f', splitCount: (b.splitCount||0)+1}); }
+                    }
+                    if(stats.absoluteZero && Math.random()<0.3) e.frozen = 60; 
+                    if(stats.shotExplode) { Sound.play('explode', 2.0); enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < 50) damageEnemy(subE, stats.dmg*0.5); }); createParticles(e.x, e.y, '#fa0', 3, 2); }
+                    if(stats.napalm && Math.random()<0.2) gasClouds.push({x:e.x, y:e.y, r:20, life:100, dmg:stats.dmg*0.2});
+                    if(stats.splitShot && !b.isMini) { for(let k=0; k<2; k++) { let ang = (Math.random()*Math.PI*2); bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true}); } }
+                    if(stats.lightning > 0) triggerLightning(e, stats.lightning);
+                    b.hit.push(e.id);
+                    if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#ffffaa', 3, 2); 
+                    if(b.pierce <= 0 && !stats.infinitePierce) { bullets.splice(i, 1); hit = true; break; } else { b.pierce--; }
+                }
+            }
+        }
+        if(hit) continue;
+    }
+
+    // 2. 敵の弾
+    for(let i=enemyBullets.length-1; i>=0; i--) {
+        let b = enemyBullets[i];
+        b.x += b.vx * ts; b.y += b.vy * ts;
+        if(Math.hypot(b.x - player.x, b.y - player.y) > 2000) { enemyBullets.splice(i, 1); continue; }
+        if(Math.hypot(player.x-b.x, player.y-b.y) < player.size + b.size) { 
+            takeDamage(10 + Math.floor(level * 0.5)); enemyBullets.splice(i, 1); 
+        }
+    }
+}
+
+function updateEnemies(ts, gameTimeSec) {
+    // スポーン
+    if(enemies.length < MAX_ENEMIES) {
+        let spawnDenom = Math.max(5, 25 - (level * 0.6)); 
+        let hordeMult = (level >= 5 ? 2.0 + Math.min(1.0, (level - 5) / 25) : 1.0) * (singularityMode ? 3.0 : 1.0);
+        
+        // 【改善】ダイナミックスポーンレート
+        // 敵が少ない（＝瞬殺している）時ほど、次が湧きやすくなる
+        let currentCountRatio = enemies.length / MAX_ENEMIES; // 0.0(いない) ~ 1.0(満員)
+        if(currentCountRatio < 0.2) hordeMult *= 3.0; // 敵が少なければ3倍湧く
+        else if(currentCountRatio < 0.5) hordeMult *= 1.5;
+
+        let spawnProb = (hordeMult / spawnDenom) * ts;
+        
+        // HP満タン時のスポーン倍率も少しマイルドにしつつ維持
+        if(player.hp >= player.maxHp * 0.9) spawnProb *= 2.0; 
+
+        if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
+    }
+
+    // ボス警告
+    let cycleTime = gameTimeSec % 300; 
+    let cycleWave = Math.floor(gameTimeSec / 300);
+    if(cycleTime > 295 && !bossWarningActive && cycleWave === bossCycleCounter) { bossWarningActive = true; triggerWarning(); }
+    if(cycleWave > bossCycleCounter) { bossCycleCounter = cycleWave; bossWarningActive = false; document.getElementById('warning-overlay').style.display = 'none'; spawnEnemy('boss', gameTimeSec); }
+
+    // AI更新
+    enemies.forEach(e => {
+        if(e.dead) return;
+        if(e.knockbackTimer > 0) e.knockbackTimer -= ts;
+        if(e.frozen > 0) { e.frozen -= ts; if(Math.random()<0.1 && particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#88ffff', 1, 1); }
+        else {
+            let dist = Math.hypot(player.x - e.x, player.y - e.y);
+            let angle = Math.atan2(player.y - e.y, player.x - e.x);
+            if (e.flash > 0) e.flash -= ts;
+            
+            if(e.ai === 'dasher') {
+                if(!e.state) e.state = 'chase';
+                if(e.state === 'chase') { e.x += Math.cos(angle)*e.speed*ts; e.y += Math.sin(angle)*e.speed*ts; if(dist < 250) { e.state = 'aim'; e.timer = 30; } }
+                else if(e.state === 'aim') { e.timer -= ts; if(e.timer <= 0) { e.state = 'dash'; e.timer = 30; e.vx = Math.cos(angle) * 14; e.vy = Math.sin(angle) * 14; } }
+                else if(e.state === 'dash') { e.x += e.vx * ts; e.y += e.vy * ts; e.timer -= ts; if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 50; } }
+                else if(e.state === 'cooldown') { e.timer -= ts; e.x += Math.cos(angle)*(e.speed*0.2)*ts; e.y += Math.sin(angle)*(e.speed*0.2)*ts; if(e.timer <= 0) e.state = 'chase'; }
+            } else if(e.ai === 'shooter') {
+                if(dist > 250) { e.x += Math.cos(angle)*e.speed*ts; e.y += Math.sin(angle)*e.speed*ts; }
+                else if(dist < 150) { e.x -= Math.cos(angle)*e.speed*0.5*ts; e.y -= Math.sin(angle)*e.speed*0.5*ts; }
+                if(Math.random() < (1/120)*ts && dist < 600) { enemyBullets.push({x: e.x, y: e.y, vx: Math.cos(angle)*6, vy: Math.sin(angle)*6, size: 6, color: '#f0a'}); }
+            } else if(e.ai === 'bat') {
+                let zig = Math.sin(gameTimeSec * 5) * 0.8; e.x += Math.cos(angle + zig) * e.speed * ts; e.y += Math.sin(angle + zig) * e.speed * ts;
+            } else {
+                e.x += Math.cos(angle) * e.speed * ts; e.y += Math.sin(angle) * e.speed * ts;
+            }
+
+            // プレイヤーとの衝突
+            if(dist < player.size + e.size) {
+                if(stats.spikeArmor && Math.random() < 0.2 * ts) { damageEnemy(e, stats.dmg * 0.5); if(particles.length < MAX_PARTICLES) createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2); }
+                if(stats.spikeReflect) { damageEnemy(e, (e.dmg * 2.0) + (stats.armor * 50)); Sound.play('hit'); if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#0f0', 3, 2); }
+                if(stats.isEarthShaker) { damageEnemy(e, stats.dmg * 2); Sound.play('bash'); let kick = Math.atan2(e.y - player.y, e.x - player.x); e.x += Math.cos(kick) * 30; e.y += Math.sin(kick) * 30; }
+                if(player.class === 'Melee' && player.slamCd <= 0) {
+                    player.slamCd = Math.max(10, 60 - stats.rate); let bonus = player.maxHp * 0.2; damageEnemy(e, (stats.dmg * 2) + bonus);
+                    let wave = 15 + (stats.pierce * 5); Sound.play('bash'); if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#fff', 5, 2); particles.push({type:'shockwave', x:player.x, y:player.y, size:wave, life:10, color:'#f00'});
+                    enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x - player.x, subE.y - player.y) < wave * 3) damageEnemy(subE, (stats.dmg * 0.5) + (bonus * 0.5)); });
+                } else {
+                    takeDamage(e.dmg);
+                }
+            }
+        }
+    });
+    enemies = enemies.filter(e => !e.dead);
+}
+
+function updateObjects(ts) {
+    // 毒ガス
+    for(let i=gasClouds.length-1; i>=0; i--) {
+        let g = gasClouds[i]; g.life -= ts; g.tick = (g.tick || 0) - ts;
+        if(g.tick <= 0) {
+            g.tick = 15; enemies.forEach(e => { if(!e.dead && Math.hypot(e.x - g.x, e.y - g.y) < g.r + e.size) { damageEnemy(e, g.dmg); if(Math.random() < 0.3) createParticles(e.x, e.y, '#aa00ff', 1, 2); } });
+        }
+        if(g.life <= 0) gasClouds.splice(i, 1);
+    }
+    // 経験値
+    if(expOrbs.length > MAX_ORBS) { let removed = expOrbs.splice(0, expOrbs.length - MAX_ORBS); removed.forEach(o => { if(gameActive) addExp(Math.floor(o.val * 0.7), true); }); }
+    for(let i=expOrbs.length-1; i>=0; i--) {
+        if(!gameActive) break; let o = expOrbs[i], d = Math.hypot(player.x - o.x, player.y - o.y);
+        if(o.forceCollect || d < stats.magnet) { let ang = Math.atan2(player.y - o.y, player.x - o.x), spd = (stats.spd * 1.5) + (d * 0.05) + 10; o.x += Math.cos(ang)*spd*ts; o.y += Math.sin(ang)*spd*ts; }
+        if(Math.hypot(player.x - o.x, player.y - o.y) < 20) { addExp(o.val); Sound.play('exp', o.pitch); expOrbs.splice(i, 1); }
+    }
+    // アイテム
+    for(let i=items.length-1; i>=0; i--) {
+        let it = items[i], d = Math.hypot(player.x - it.x, player.y - it.y);
+        if(d < 200) { it.x += (player.x - it.x) * 0.1 * ts; it.y += (player.y - it.y) * 0.1 * ts; }
+        if(d < 30) { if(it.type === 'magnet') { Sound.play('powerup'); particles.push({type:'shockwave', x:player.x, y:player.y, size:500, life:30, color:'#fff'}); expOrbs.forEach(o => o.forceCollect = true); } else if(it.type === 'bomb') { triggerBomb(); } items.splice(i, 1); }
+    }
+    // エフェクト
+    if(particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES);
+    for(let i=particles.length-1; i>=0; i--) {
+        let p = particles[i];
+        if(p.type === 'lightning') p.life -= ts; else if(p.type === 'shockwave') { p.size += 3 * ts; p.life -= ts; } else { p.x += p.vx * ts; p.y += p.vy * ts; p.life -= ts; p.size *= 0.9; }
+        if(p.life <= 0) particles.splice(i, 1);
+    }
+    // テキスト
+    if(texts.length > MAX_TEXTS) texts.splice(0, texts.length - MAX_TEXTS);
+    for(let i=texts.length-1; i>=0; i--) { texts[i].y -= 1 * ts; texts[i].life -= ts; if(texts[i].life<=0) texts.splice(i, 1); }
+}
+
+function triggerBomb() {
+    Sound.play('bomb');
+    let overlay = document.getElementById('bomb-overlay');
+    overlay.style.display = 'block';
+    overlay.style.opacity = '0.8';
+    setTimeout(() => { overlay.style.opacity = '0'; setTimeout(()=>overlay.style.display='none', 500); }, 100);
+
+    enemies.forEach(e => {
+        if(!e.dead && e.type !== 'boss') {
+            damageEnemy(e, e.hp + 9999);
+            createParticles(e.x, e.y, '#fff', 5, 5);
+        }
+    });
+    screenShake = 30;
+}
+
+function shoot() {
+    if(stats.samuraiMode) {
+        let target = null, minD = Infinity;
+        enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-player.x, e.y-player.y); if(d<minD){minD=d; target=e;} });
+        
+        let angle = target ? Math.atan2(target.y-player.y, target.x-player.x) : (player.isMoving ? Math.atan2(joyMoveY||0, joyMoveX||1) : -Math.PI/2);
+        if(!target && !player.isMoving && joyTouchId === null) angle = -Math.PI/2; 
+
+        let slashSpeed = stats.bulletSpeed * 0.9; 
+        
+        Sound.play('missile', 2.0); 
+        bullets.push({
+            type: 'slash', x: player.x, y: player.y, 
+            vx: Math.cos(angle) * slashSpeed, vy: Math.sin(angle) * slashSpeed, 
+            angle: angle,
+            size: 220 * stats.areaScale,
+            life: 15,  
+            color: '#fff', hit: new Set(), pierce: 999, 
+            damageMult: 1.0
+        });
+        
+        if(stats.swordWave || stats.multi > 1) {
+             let waveCount = stats.multi;
+             let waveDmgMult = 1.0;
+             let waveSize = 5 * stats.areaScale; 
+             if(waveCount > 6) {
+                 let extra = waveCount - 6;
+                 waveDmgMult += extra * 0.3; 
+                 waveSize += Math.min(15, extra * 0.5); 
+                 waveCount = 6; 
+             }
+             for(let i=0; i<waveCount; i++) {
+                 let waveAng = angle + (Math.random()-0.5)*0.5;
+                 bullets.push({
+                    type:'normal', 
+                    x:player.x, y:player.y, 
+                    vx:Math.cos(waveAng)*stats.bulletSpeed*1.2, 
+                    vy:Math.sin(waveAng)*stats.bulletSpeed*1.2, 
+                    size:waveSize, 
+                    color:'#adf', 
+                    pierce:5, 
+                    life:40,
+                    hit: [],  
+                    damageMult: waveDmgMult
+                });
+             }
+        }
+        return; 
+    }
+
+    let target = null;
+    let minD = Infinity;
+    
+    enemies.forEach(e => {
+        if (e.dead) return;
+        let d = Math.hypot(e.x - player.x, e.y - player.y);
+        if (d < minD) { minD = d; target = e; }
+    });
+
+    let angle;
+    if (target) { angle = Math.atan2(target.y - player.y, target.x - player.x); } 
+    else { angle = Math.random() * Math.PI * 2; }
+
+    let count = stats.multi;
+    if(player.class === 'Sniper') count = 1; 
+    if(stats.infiniteMag) count += 3; 
+    
+    let currentDmg = stats.dmg;
+    if(stats.siegeMode && stats.isStationary) currentDmg *= 2;
+    if(stats.doubleShot && Math.random() < 0.5) count *= 2; 
+
+    let bDmgMultBase = 1.0;
+    let bSizeBase = stats.railgun ? 10 : 5;
+    
+    if(count > 20) {
+        let extra = count - 20;
+        bDmgMultBase += extra * 0.1; 
+        count = 20; 
+    }
+
+    let spread = 0.1;
+    if(stats.bulletStorm) {
+        spread = 0.5 + Math.sin(Date.now()*0.01)*0.5; 
+        count += 3; 
+    }
+    let startAngle = angle - (spread * (count-1)) / 2;
+
+    for(let i=0; i<count; i++) {
+        let currentAngle = startAngle + spread * i;
+        let vx = Math.cos(currentAngle) * stats.bulletSpeed;
+        let vy = Math.sin(currentAngle) * stats.bulletSpeed;
+        
+        let bType = 'normal';
+        let bColor = stats.ghostShot ? '#88ff88' : (stats.prismSplit ? '#f0f' : '#fff');
+        let bDmgMult = bDmgMultBase;
+        
+        let bSize = bSizeBase * stats.areaScale; 
+
+        if(stats.tempestMode) {
+             bColor = '#d0f'; 
+             bSize = 6 * stats.areaScale;
+        }
+
+        if(stats.tricksterMode) {
+            let cols = ['#f00', '#0f0', '#00f', '#ff0', '#f0f', '#0ff'];
+            bColor = cols[Math.floor(Math.random()*cols.length)];
+            if(stats.chaosShot) bSize = (3 + Math.random() * 10) * stats.areaScale;
+            let roll = Math.random();
+            if(roll < 0.25) stats.pierce = 99; 
+            else if(roll < 0.5) stats.homing = 1; 
+            else stats.homing = 0;
+
+            if(stats.russianRoulette) {
+                if(Math.random() < 0.16) { bDmgMult *= 10; bSize *= 2; bColor='#fff'; } 
+                else if(Math.random() < 0.1) { bDmgMult *= 0.5; bSize = 2; bColor='#444'; } 
+            }
+        }
+
+        bullets.push({
+            type: bType, x: player.x, y: player.y,
+            vx: vx, vy: vy,
+            size: bSize, color: bColor,
+            hit: [], pierce: stats.pierce,
+            damageMult: bDmgMult, isMini: false
+        });
+    }
+
+    if(stats.doppelganger && player.clone) {
+        bullets.push({
+            type: 'normal', x: player.clone.x, y: player.clone.y,
+            vx: -Math.cos(startAngle)*stats.bulletSpeed, vy: -Math.sin(startAngle)*stats.bulletSpeed,
+            size: 5 * stats.areaScale,
+            color: '#fff', hit: [], pierce: stats.pierce, damageMult: 1, isMini: false
+        });
+    }
+
+    if(stats.missileChance > 0 && Math.random() < stats.missileChance) fireMissile();
+    Sound.play('shoot', 1.0 + Math.random()*0.2);
+}
+
+function dash() {
+    if(player.dashCd > 0) return;
+    player.dashCd = player.maxDashCd;
+    player.invincible = 30; 
+    
+    let dx = 0, dy = 0;
+    if(keys['w'] || keys['ArrowUp']) dy = -1;
+    if(keys['s'] || keys['ArrowDown']) dy = 1;
+    if(keys['a'] || keys['ArrowLeft']) dx = -1;
+    if(keys['d'] || keys['ArrowRight']) dx = 1;
+    
+    if(joyTouchId !== null) { dx = joyMoveX; dy = joyMoveY; }
+    if(dx === 0 && dy === 0) dx = 1; 
+
+    let len = Math.hypot(dx, dy);
+    if(len > 0) { dx /= len; dy /= len; }
+
+    player.x += dx * 100;
+    player.y += dy * 100;
+    
+    if(stats.clusterMine) {
+     for(let i=0; i<3; i++) {
+         let mx = player.x - dx * (20 + i*10);
+         let my = player.y - dy * (20 + i*10);
+         // ↓ ここにも life を追加 (例: 600フレーム = 10秒で消える)
+         bullets.push({
+             type:'missile', 
+             x:mx, y:my, 
+             vx:0, vy:0, 
+             speed:0, 
+             size:5, 
+             hit:[], 
+             isMini:false,
+             life: 600 // ★ここを追加！
+         });
+     }
+}
+    createParticles(player.x, player.y, '#fff', 10, 2);
+    Sound.play('dash'); 
+}
+
+function spawnSentry() {
+    if(sentries.length >= stats.sentryMax) sentries.shift(); 
+    sentries.push({x: player.x, y: player.y, cooldown: 0});
+    createParticles(player.x, player.y, '#0f0', 10, 3);
+    Sound.play('spark');
+}
+
+function pointToLineDistance(px, py, x1, y1, x2, y2) {
+    let A = px - x1; let B = py - y1;
+    let C = x2 - x1; let D = y2 - y1;
+    let dot = A * C + B * D;
+    let len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) param = dot / len_sq;
+    let xx, yy;
+    if (param < 0) { xx = x1; yy = y1; }
+    else if (param > 1) { xx = x2; yy = y2; }
+    else { xx = x1 + param * C; yy = y1 + param * D; }
+    let dx = px - xx; let dy = py - yy;
+    return Math.hypot(dx, dy);
+}
+
+function fireMissile() {
+    Sound.play('missile');
+    bullets.push({ type: 'missile', x: player.x, y: player.y, vx: (Math.random()-0.5)*4, vy: -5, speed: 10, size: 8, hit: [], isMini: false });
+}
+
+function fireOmegaLaser() {
+    Sound.play('laser');
+    screenShake = 10;
+    bullets.push({ type: 'omega', x: player.x, y: player.y, vx: 50, vy: 0, size: 300, life: 30, hit: [], tick: 0 });
+    particles.push({type:'shockwave', x:player.x, y:player.y, size:100, life:20, color:'#f0f'});
+}
+
+function fireChakram() {
+    let ang = Math.random() * Math.PI * 2;
+    bullets.push({ 
+        type: 'chakram', x: player.x, y: player.y, 
+        vx: Math.cos(ang)*12, vy: Math.sin(ang)*12, 
+        size: 10 + stats.chakram*2, life: 180 + stats.chakram*30, 
+        hit: [], bounceCd: 0 
+    });
+}
+
+function triggerLightning(target, lv) {
+    let range = 200 + (lv * 30); let count = 0; let maxTargets = lv; 
+    enemies.forEach(e => {
+        if(!e.dead && e !== target && count < maxTargets) {
+            if(Math.hypot(e.x - target.x, e.y - target.y) < range) {
+                damageEnemy(e, stats.dmg * 0.8);
+                createLightningEffect(target.x, target.y, e.x, e.y);
+                Sound.play('lightning'); count++;
+            }
+        }
+    });
+}
+function createLightningEffect(x1, y1, x2, y2) { 
+    if(particles.length > MAX_PARTICLES) return;
+    particles.push({ type: 'lightning', x1: x1, y1: y1, x2: x2, y2: y2, life: 10, color: '#88ffff' }); 
+}
+
+function takeDamage(dmg) {
+    if(Math.random() < stats.dodge) {
+        if(texts.length < MAX_TEXTS) texts.push({x:player.x, y:player.y-20, str:"MISS", life:30, color:'#88ff88'});
+        return; 
+    }
+    
+    if(stats.forceField && stats.forceFieldCd <= 0) {
+        stats.forceFieldCd = 300; 
+        Sound.play('bounce');
+        particles.push({type:'shockwave', x:player.x, y:player.y, size:50, life:20, color:'#0ff'});
+        return; 
+    }
+    
+    if(player.invincible > 0) return;
+    
+    dmg = Math.max(1, dmg - stats.armor);
+
+    player.hp -= dmg; 
+    player.invincible = 20; 
+    screenShake = 15;
+    createParticles(player.x, player.y, '#f00', 10, 4); updateUI();
+    
+    if(stats.reactiveArmor) {
+        Sound.play('spark');
+        particles.push({type:'shockwave', x:player.x, y:player.y, size:150, life:10, color:'#0f0'});
+        enemies.forEach(e => {
+             if(!e.dead && Math.hypot(e.x - player.x, e.y - player.y) < 150) {
+                 damageEnemy(e, stats.dmg);
+                 let ang = Math.atan2(e.y - player.y, e.x - player.x);
+                 e.x += Math.cos(ang) * 50; e.y += Math.sin(ang) * 50; 
+             }
+        });
+    }
+
+    if(player.hp <= 0) gameOver();
+}
+
+function spawnEnemy(mode, time) {
+    // ボス戦や上限チェックはそのまま維持
+    if(enemies.length >= MAX_ENEMIES && mode !== 'boss') return; 
+
+    let dist = Math.max(canvas.width, canvas.height)/2 + 50;
+    let ang = Math.random()*Math.PI*2;
+    let ex = player.x + Math.cos(ang)*dist; 
+    let ey = player.y + Math.sin(ang)*dist; 
+    
+    let type = mode;
+
+    // 'random' の場合、現在のWAVEデータに基づいて敵を決める
+    if(mode === 'random') {
+        // 現在の時間に対応するWAVE定義を探す（後ろから探して、timeを超えている最新のものを採用）
+        let wave = WAVE_DATA[0];
+        for (let i = WAVE_DATA.length - 1; i >= 0; i--) {
+            if (time >= WAVE_DATA[i].time) {
+                wave = WAVE_DATA[i];
+                break;
+            }
+        }
+
+        // 定義された敵リストからランダムに1つ選ぶ
+        if (wave && wave.enemies.length > 0) {
+            type = wave.enemies[Math.floor(Math.random() * wave.enemies.length)];
+        } else {
+            type = 'normal';
+        }
+        
+        // レベル50以上なら低確率でGolemを混ぜる（隠しスパイス）
+        if (level >= 50 && Math.random() < 0.05) type = 'golem';
+    }
+
+    createEnemy(type, ex, ey);
+}
+
+function createEnemy(type, x, y) {
+    const data = ENEMY_DATA[type] || ENEMY_DATA['normal'];
+
+    let e = { 
+        id: Math.random(), 
+        x: x, 
+        y: y, 
+        flash: 0, 
+        type: (type === 'boss' || type === 'golem') ? type : 'mob',
+        ai: data.ai,
+        frozen: 0, 
+        knockbackTimer: 0 
+    };
+    
+    // 【改善1】HP上昇率を 1.10 (激重) から 1.07 (マイルド) に緩和
+    // これによりLv100でも「硬すぎる」現象を防ぎます
+    let hpMult = Math.pow(1.07, level - 1); 
+
+    if(singularityMode) hpMult *= 2.0;
+
+    // 【改善2】HP満タン時のペナルティ仕様変更（重要！）
+    // 旧仕様: HPが 5倍〜8倍 になる → 硬すぎてつまらない
+    // 新仕様: HPは 1.3倍 だが、移動速度と攻撃力が跳ね上がる → 「殺るか殺られるか」の緊張感
+    if (player.hp >= player.maxHp * 0.9) {
+        // レベルが高いほど殺意が増す
+        let dangerLevel = Math.min(3.0, 1.0 + (level / 50)); 
+        
+        hpMult *= 1.3; // 硬さは少し増す程度
+        e.speedMultOverride = 1.2 * dangerLevel; // 敵が加速する！
+        e.dmgMultOverride = 1.5; // 一撃が痛くなる
+        
+        // 視覚的にヤバさを伝える（少し赤く発光させるなどの処理があればベストだが、今回は速度で表現）
+    }
+
+    e.hp = data.baseHp * hpMult;
+    e.size = data.size;
+    e.color = data.color;
+
+    let spdBase = data.baseSpeed + (level * 0.01 || 0);
+    if (type === 'normal') spdBase += Math.random();
+    
+    let spdMult = (data.speedMult !== undefined) ? data.speedMult : 1.0;
+    // 上記のペナルティによる加速を適用
+    if (e.speedMultOverride) spdMult *= e.speedMultOverride;
+
+    e.speed = spdBase * spdMult;
+    
+    // ダメージ計算
+    let dmgBase = 10 + Math.floor(level * 1.5);
+    if (e.dmgMultOverride) dmgBase *= e.dmgMultOverride;
+    e.dmg = dmgBase;
+
+    // ボス補正
+    if(type === 'boss') { 
+        e.dmg = 50 + (level * 2);
+        let cycleMult = 1 + (bossCycleCounter * 0.5);
+        // 後半のボスはHPだけでなく行動速度も強化
+        if(bossCycleCounter >= 3) {
+            let lateGameFactor = bossCycleCounter - 2;
+            cycleMult *= Math.pow(1.15, lateGameFactor);
+            e.speed = Math.min(8.0, e.speed + (lateGameFactor * 0.8)); // ボスも速くする
+        }
+        e.hp *= cycleMult;
+    }
+
+    if(singularityMode) { 
+        e.color = '#000000'; 
+        e.speed *= 1.3; // シンギュラリティ中はさらに高速
+    }
+
+    e.maxHp = e.hp; 
+    enemies.push(e);
+}
+
+function damageEnemy(e, dmg, isPhantom = false) {
+    if(e.dead) return; 
+
+    // クリティカル判定 (ファントム以外)
+    let isCrit = false;
+    if(!isPhantom && (Math.random() < stats.critChance || stats.deadeye)) { 
+        let multiplier = stats.deadeye ? (stats.critMult + 1.0) : stats.critMult;
+        dmg *= multiplier; 
+        isCrit = true; 
+    } 
+
+    // ▼▼▼ 変更点: ここにあった長いif文の羅列を削除し、この処理に変更 ▼▼▼
+    
+    // 計算用コンテキストを作成 (オブジェクト経由で数値を書き換えてもらう)
+    let ctx = { enemy: e, dmg: dmg, isCrit: isCrit };
+    
+    // 「ダメージ計算するよ！」と通知 -> data.js の onBeforeDamage が動いて ctx.dmg を書き換える
+    SkillSystem.trigger('onBeforeDamage', ctx);
+    
+    // 書き換えられた結果を反映
+    dmg = ctx.dmg;
+    isCrit = ctx.isCrit;
+    
+    // ▲▲▲ 変更点ここまで ▲▲▲
+
+    e.hp -= dmg; e.flash = 5; 
+    
+    // 攻撃ヒット後のイベント (ファントムストライク等はここで発動)
+    SkillSystem.trigger('onHit', { enemy: e, dmg: dmg, isPhantom: isPhantom });
+
+    let textColor = isPhantom ? '#aaa' : (isCrit ? '#ff0' : '#fff');
+    if(isPhantom) {
+        if(Math.random() < 0.2) createParticles(e.x, e.y, '#888', 1, 2);
+    } else {
+        if(particles.length < MAX_PARTICLES && Math.random() < 0.2) createParticles(e.x, e.y, '#fff', 1, 2); 
+        Sound.play('hit');
+    }
+
+    if(isCrit || e.type === 'boss' || texts.length < 5 || Math.random() < 0.2) {
+        if(texts.length < MAX_TEXTS) texts.push({x:e.x, y:e.y, str:Math.floor(dmg), life:20, color: textColor});
+    }
+    
+    // 敵死亡時の処理 (ここはまだ長いので、次の段階で整理しても良い)
+    if(e.hp <= 0) {
+        e.dead = true; 
+        Sound.play('explode'); 
+        screenShake = e.type === 'boss' ? 20 : 2; 
+
+        // ▼▼▼ 修正: ここにあった大量のスキル分岐をこの1行に集約 ▼▼▼
+        SkillSystem.trigger('onKill', { enemy: e, player: player });
+        // ▲▲▲ 修正完了 ▲▲▲
+        
+        // --- 以下の演出・ドロップ処理はゲームの基本ルールなので残してOK ---
+        
+        if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, e.color, e.type==='boss'?30:3, 4);
+
+        let levelScaler = 1 + (level * 0.5); 
+        if(singularityMode) levelScaler *= 2;
+        let baseVal = 25 * levelScaler;
+        let val = baseVal;
+        if(e.type === 'boss') val = baseVal * 50;
+        else if(e.ai === 'tank') val = Math.max(300, baseVal * 3);
+
+        // オーブの見た目決定
+        let orbType = { val: val, color: '#0ff', size: 4, pitch: 1.0 }; 
+        if(val >= 20000) orbType = { val: val, color: '#f0f', size: 16, pitch: 0.5 }; 
+        else if(val >= 6000) orbType = { val: val, color: '#f00', size: 14, pitch: 0.6 }; 
+        else if(val >= 1500) orbType = { val: val, color: '#f80', size: 12, pitch: 0.7 }; 
+        else if(val >= 300) orbType = { val: val, color: '#00f', size: 10, pitch: 0.8 }; 
+        else if(val >= 80) orbType = { val: val, color: '#0f0', size: 8, pitch: 0.9 }; 
+        
+        if(e.ai === 'splitter') { createEnemy('minion', e.x+10, e.y); createEnemy('minion', e.x-10, e.y); }
+        score += val; updateUI(); 
+        
+        expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
+
+        if(Math.random() < 0.002) items.push({type: 'magnet', x: e.x, y: e.y});
+        if(Math.random() < 0.0005) items.push({type: 'bomb', x: e.x, y: e.y});
+    }
+}
+
+function addExp(v, silent) {
+    if(!gameActive) return; 
+    exp += v; 
+    if(exp >= nextExp) { 
+        exp = 0; level++; 
+        if (level < 45) {
+            nextExp = Math.floor(nextExp * 1.15) + 500;
+        } else {
+            nextExp = Math.floor(nextExp * 1.02) + 1000;
+        }
+        Sound.play('levelup'); updateUI(); 
+        
+        if(level === 5) showEvo(); 
+        else if(level === 40) showSecondEvo(); 
+        else if(level >= 20 && level % 10 === 0) showMilestone(); 
+        else showUpgrade(); 
+    }
+    document.getElementById('xp-fill').style.width = Math.min(100, (exp/nextExp*100))+'%';
+}
+
+function triggerVoidRift(target) {
+    if(!target || target.dead) return;
+
+    let dmg = stats.dmg * 2.5; 
+    let range = 60 * stats.areaScale;
+    let color = '#8000ff'; 
+    let delay = 30; 
+    let extraEffect = null;
+
+    if(player.class === 'Samurai' || player.subClass === 'Ashura') {
+        delay = 0; dmg *= 1.2; color = '#ff0033'; Sound.play('missile', 3.0); 
+    } else if(player.class === 'Melee' || player.class === 'Vanguard') {
+        delay = 45; range *= 1.5;
+        extraEffect = (e) => {
+            let angle = Math.atan2(target.y - e.y, target.x - e.x);
+            e.x += Math.cos(angle) * 30; e.y += Math.sin(angle) * 30; 
+        };
+    } else if(player.class === 'Sniper') {
+        dmg *= 3.0; range *= 0.5; color = '#ff0';
+        extraEffect = (e) => { e.x += (e.x - player.x) * 0.1; };
+    } else if(player.class === 'Guardian') {
+        dmg *= 0.5; color = '#00ffff'; extraEffect = (e) => { e.frozen = 90; };
+    } else if(player.class === 'Assault') {
+        extraEffect = (e) => { for(let i=0; i<3; i++) fireMissile(); };
+    } else if(player.class === 'Alchemist') {
+        extraEffect = (e) => { gasClouds.push({x:e.x, y:e.y, r:40, life:120, dmg:stats.dmg*0.3}); };
+        color = '#00ff00';
+    } else if(player.class === 'Trickster') {
+        range *= (0.5 + Math.random() * 2.0);
+        dmg *= (Math.random() * 5.0);
+        color = ['#f00','#0f0','#00f','#ff0'][Math.floor(Math.random()*4)];
+    }
+
+    bullets.push({
+        type: 'void', x: target.x, y: target.y, vx: 0, vy: 0,
+        life: delay, size: range, color: color, dmg: dmg,
+        hit: [], extra: extraEffect, maxLife: delay 
+    });
+}
