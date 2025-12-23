@@ -7,8 +7,9 @@ const MAX_SOUND_CONCURRENT = 32;
 
 // --- 敵のステータス定義データベース ---
 const ENEMY_DATA = {
-    boss:    { baseHp: 3000, size: 90, color: '#cc0000', baseSpeed: 3.5, ai: 'boss' },
+    boss:    { baseHp: 3500, size: 90, color: '#cc0000', baseSpeed: 3.5, ai: 'boss' },
     golem:   { baseHp: 800,  size: 25, color: '#2F4F4F', baseSpeed: 2.5, ai: 'normal', speedMult: 0.3 },
+    iron_will: { baseHp: 800, size: 22, color: '#708090', baseSpeed: 2.2, ai: 'iron' },
     dasher:  { baseHp: 40,   size: 18, color: '#ff3333', baseSpeed: 3.5, ai: 'dasher' },
     splitter:{ baseHp: 30,   size: 20, color: '#ff3333', baseSpeed: 2.0, ai: 'splitter' },
     bat:     { baseHp: 12,   size: 10, color: '#ff3333', baseSpeed: 6.0, ai: 'bat' },
@@ -42,9 +43,24 @@ const UPGRADE_DATA = [
     { id: 'rate', icon: '⚡', title: '連射スピード', val: 5, unit: '%', 
       desc: v=> {
           if(player.class === 'Melee' || player.class === 'Samurai') return `攻撃間隔 -${v}%`;
+          // 【改善3】説明文を分岐
+          if(stats.rate <= 2) return `限界突破! マルチショット +1 / 弾速 +10%`;
           return `連射速度 +${v}%`; 
       },
-      func: (v)=> stats.rate = Math.max(2, stats.rate*(1-v/100)) },
+      func: (v)=> { 
+          // 連射速度が限界(2フレーム以下)に達している場合
+          if(stats.rate <= 2) {
+              // 限界突破ボーナス：同時発射数と弾速を強化する（腐らせない）
+              stats.multi += 1;
+              stats.bulletSpeed *= 1.1;
+              // 演出としてテキストを出す
+              if(typeof texts !== 'undefined') texts.push({x:player.x, y:player.y-40, str:"LIMIT BREAK!", life:60, color:'#0ff'});
+          } else {
+              // 通常の強化
+              stats.rate = Math.max(2, stats.rate*(1-v/100));
+          }
+      } 
+    },
     { id: 'lightning', icon: '🌩️', title: 'ライトニング', val: 1, unit: 'Lv', 
       desc: v=>`攻撃時、確率で落雷が発生\n(Lv +${v})`, 
       func: (v)=> stats.lightning+=v },
@@ -531,7 +547,13 @@ SkillSystem.on('onKill', (ctx) => {
 
     // 3. ネクロマンサー (怨霊召喚)
     if(stats.necromancer) {
-        bullets.push({type: 'spirit', x: enemy.x, y: enemy.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
+        // 現在画面上にいる 'spirit' の数を数える
+        const spiritCount = bullets.filter(b => b.type === 'spirit').length;
+        
+        // 上限（ここでは5体）を超えていたら召喚しない
+        if(spiritCount < 50) {
+            bullets.push({type: 'spirit', x: enemy.x, y: enemy.y, vx: 0, vy: 0, speed: 8, size: 6, hit: [], isMini: false});
+        }
     }
 
     // 4. ブラッドラスト (撃破時HP1%回復)
