@@ -1166,7 +1166,7 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
-        if (level < 45) {
+        if (level < 40) {
             nextExp = Math.floor(nextExp * 1.15) + 500;
         } else {
             nextExp = Math.floor(nextExp * 1.02) + 1000;
