@@ -7,6 +7,7 @@ let joyTouchId = null;
 let joyStartX = 0, joyStartY = 0;
 let joyMoveX = 0, joyMoveY = 0;
 let isPaused = false;
+let pausedAt = 0
 const JOY_MAX_RADIUS = 50;
 
 let lastTime = 0;
