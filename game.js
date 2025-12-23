@@ -45,7 +45,7 @@ function updateSystem(ts) {
     // シンギュラリティ
     if(level >= 100 && !singularityMode) {
         singularityMode = true;
-        document.body.classList.add('singularity-mode');
+        // document.body.classList.add('singularity-mode');
         Sound.play('milestone');
     }
 
@@ -1072,7 +1072,7 @@ function createEnemy(type, x, y) {
     }
 
     if(singularityMode) { 
-        e.color = '#000000'; 
+        // e.color = '#000000'; 
         e.speed *= 1.3; // シンギュラリティ中はさらに高速
     }
 
