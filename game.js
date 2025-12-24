@@ -352,26 +352,62 @@ function updateCombat(ts) {
 
     // 5. 近接回転刃 / 飛剣
     if(player.class === 'Melee' && (stats.multi > 0 || stats.bladeStorm)) {
-        let count = stats.multi + (stats.bladeStorm ? 4 : 0);
+        // 数値が小数にならないように整数化
+        let count = Math.floor(stats.multi + (stats.bladeStorm ? 4 : 0));
+        
         if(player.subClass === 'FlyingSwords') {
-             if(flyingSwords.length !== count) { flyingSwords = []; for(let i=0; i<count; i++) flyingSwords.push({x:player.x, y:player.y, target:null, cooldown:0}); }
+             // ★修正1: 進化前の回転刃が残らないようにここで明示的に消す
+             if(spikeBits.length > 0) spikeBits = [];
+
+             // 配列の初期化（数が変わった時だけ再生成）
+             if(flyingSwords.length !== count) { 
+                 flyingSwords = []; 
+                 for(let i=0; i<count; i++) flyingSwords.push({x:player.x, y:player.y, target:null, cooldown:0}); 
+             }
+             
              flyingSwords.forEach(sw => {
                  if(sw.cooldown > 0) sw.cooldown -= ts;
-                 if(!sw.target || sw.target.dead || Math.hypot(sw.target.x-player.x, sw.target.y-player.y) > 400) {
-                     sw.target = null; let minD = 350;
-                     enemies.forEach(e => { if(e.dead) return; let d = Math.hypot(e.x-player.x, e.y-player.y); if(d < minD) { minD=d; sw.target=e; } });
+                 
+                 // ターゲット探索（範囲内に敵がいなければプレイヤーの近くに戻る）
+                 if(!sw.target || sw.target.dead || Math.hypot(sw.target.x-player.x, sw.target.y-player.y) > 500) {
+                     sw.target = null; 
+                     let minD = 450;
+                     enemies.forEach(e => { 
+                         if(e.dead) return; 
+                         let d = Math.hypot(e.x-player.x, e.y-player.y); 
+                         if(d < minD) { minD=d; sw.target=e; } 
+                     });
                  }
+                 
                  let tx, ty;
-                 if(sw.target) { tx = sw.target.x; ty = sw.target.y; } 
-                 else { let angle = Date.now() * 0.002 + (flyingSwords.indexOf(sw) * (Math.PI*2/count)); tx = player.x + Math.cos(angle) * 80; ty = player.y + Math.sin(angle) * 80; }
-                 sw.x += (tx - sw.x) * 0.15 * ts; sw.y += (ty - sw.y) * 0.15 * ts;
+                 if(sw.target) { 
+                     tx = sw.target.x; ty = sw.target.y; 
+                 } else { 
+                     // 待機中はプレイヤーの周りをフワフワする
+                     let angle = Date.now() * 0.002 + (flyingSwords.indexOf(sw) * (Math.PI*2/count)); 
+                     tx = player.x + Math.cos(angle) * 80; 
+                     ty = player.y + Math.sin(angle) * 80; 
+                 }
+                 
+                 // 移動処理（追従速度を少し上げました 0.15 -> 0.2）
+                 sw.x += (tx - sw.x) * 0.2 * ts; 
+                 sw.y += (ty - sw.y) * 0.2 * ts;
+                 
+                 // ★修正2: 当たり判定に敵のサイズ(e.size)を含めることで攻撃が当たるようにする
                  enemies.forEach(e => {
-                     if(!e.dead && Math.hypot(e.x-sw.x, e.y-sw.y) < 15 && sw.cooldown <= 0) {
-                         damageEnemy(e, stats.dmg * 0.8); createParticles(e.x, e.y, '#f0a', 1, 1); sw.cooldown = 15; 
+                     let hitRange = 15 + e.size; // 飛剣の半径15 + 敵の半径
+                     if(!e.dead && Math.hypot(e.x-sw.x, e.y-sw.y) < hitRange && sw.cooldown <= 0) {
+                         damageEnemy(e, stats.dmg * 0.8); 
+                         createParticles(e.x, e.y, '#f0a', 1, 1); 
+                         sw.cooldown = 15; // ヒット間隔
                      }
                  });
              });
         } else {
+            // --- ここは変更なし（通常の回転刃ロジック） ---
+            // 飛剣モードじゃない時は、逆に飛剣データを消しておくと安心
+            if(flyingSwords.length > 0) flyingSwords = [];
+
             if(spikeBits.length !== count) { spikeBits = []; for(let i=0; i<count; i++) spikeBits.push({angle:0}); }
             let rotSpd = 0.1 * ts;
             spikeBits.forEach((bit, i) => {
@@ -381,6 +417,7 @@ function updateCombat(ts) {
                 if(stats.isColossus) radius += 20;
                 bit.x = player.x + Math.cos(currentAngle) * radius; bit.y = player.y + Math.sin(currentAngle) * radius;
                 enemies.forEach(e => {
+                    // ここもついでに敵サイズを考慮しておくと親切です
                     if(!e.dead && Math.hypot(e.x-bit.x, e.y-bit.y) < 15 + e.size && Math.random() < 0.1 * ts) damageEnemy(e, stats.dmg * 0.5);
                 });
             });
