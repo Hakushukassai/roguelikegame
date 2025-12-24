@@ -398,6 +398,39 @@ const SECOND_EVO_DATA = [
       color: '#885500', func: ()=>{ stats.isEarthShaker = true; player.size = 30; player.maxHp += 1000; player.hp += 1000; stats.armor += 10; } }
 ];
 
+// ボス撃破専用スキル（10種・重複なし）
+const BOSS_SKILL_DATA = [
+    { id: 'boss_heart', icon: '🫀', title: '巨人の心臓', desc: '最大HPが +100% (2倍) になる。', 
+      isOwned: ()=>stats.boss_heart, f:()=>{player.maxHp*=2; player.hp*=2; stats.boss_heart=true;} },
+
+    { id: 'boss_wing', icon: '👿', title: '悪魔の翼', desc: '移動速度 +30%、回避率 +20%。', 
+      isOwned: ()=>stats.boss_wing, f:()=>{stats.spd+=3; stats.dodge+=0.2; stats.boss_wing=true;} },
+
+    { id: 'boss_fang', icon: '🧛', title: '吸血の牙', desc: '攻撃命中時、低確率でHPを1回復する。', 
+      isOwned: ()=>stats.boss_fang, f:()=>{stats.lifesteal+=1; stats.boss_fang=true;} }, // 既存lifestealを加算
+
+    { id: 'boss_scale', icon: '🐲', title: '竜の逆鱗', desc: '受けるダメージを常に -5 軽減し、装甲を強化。', 
+      isOwned: ()=>stats.boss_scale, f:()=>{stats.armor+=5; stats.boss_scale=true;} },
+
+    { id: 'boss_eye', icon: '👁️', title: '真理の目', desc: 'クリティカル率 +20%、クリティカル倍率 +100%。', 
+      isOwned: ()=>stats.boss_eye, f:()=>{stats.critChance+=0.2; stats.critMult+=1.0; stats.boss_eye=true;} },
+
+    { id: 'boss_engine', icon: '⚙️', title: '永久機関', desc: 'スキルや攻撃のクールダウンが 15% 短縮される。', 
+      isOwned: ()=>stats.boss_engine, f:()=>{stats.rate*=0.85; stats.boss_engine=true;} },
+
+    { id: 'boss_core', icon: '⚛️', title: 'グラビティコア', desc: 'アイテム収集範囲が画面全体になり、獲得経験値 +20%。', 
+      isOwned: ()=>stats.boss_core, f:()=>{stats.magnet+=1000; stats.expMult=(stats.expMult||1)*1.2; stats.boss_core=true;} },
+
+    { id: 'boss_arm', icon: '🦾', title: 'オメガアーム', desc: '同時発射数 +2、攻撃範囲 +30%。', 
+      isOwned: ()=>stats.boss_arm, f:()=>{stats.multi+=2; stats.areaScale+=0.3; stats.boss_arm=true;} },
+
+    { id: 'boss_blood', icon: '🩸', title: 'バーサーカー', desc: '被ダメージが1.2倍になる代わりに、攻撃力が 50% 上昇。', 
+      isOwned: ()=>stats.boss_blood, f:()=>{stats.dmg*=1.5; stats.armor-=2; stats.boss_blood=true;} },
+
+    { id: 'boss_soul', icon: '👻', title: 'ソウルイーター', desc: '敵を倒すと必ずHPが1回復する。', 
+      isOwned: ()=>stats.boss_soul, f:()=>{stats.bloodLust=true; stats.boss_soul=true;} } // bloodLustを確定発動にするイメージ
+];
+
 // 1. 敵の出現パターン（WAVEデータ）
 // time: 開始時間(秒), enemies: その時間帯に出る敵のリスト
 const WAVE_DATA = [
@@ -660,3 +693,4 @@ const ACTIVE_SKILLS_DATA = {
         }
     }
 };
+
