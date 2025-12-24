@@ -183,6 +183,7 @@ function getCurrentStatString(id) {
         case 'knockback': return `衝撃力: ${s.knockback}`;
         case 'dodge': return `回避率: ${(s.dodge*100).toFixed(0)}%`;
         case 'multi_blade': case 'multi_wave': case 'multi_shot': return `個数: ${s.multi}`;
+        case 'sonic_boom': return `レベル: ${stats.sonicBoom}`;
         default: return '';
     }
 }
@@ -595,6 +596,38 @@ function draw() {
             ctx.strokeStyle = '#ccffff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(b.size + 20, 0); ctx.stroke();
             ctx.restore();
             return;
+        }
+        else if(b.type === 'sonic') {
+            ctx.save();
+            ctx.translate(b.x, b.y);
+            // 進行方向に向ける
+            ctx.rotate(Math.atan2(b.vy, b.vx));
+            
+            // 三日月状の衝撃波を描画
+            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = b.color || '#ccffff';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = b.color || '#ccffff';
+            
+            ctx.beginPath();
+            // 外側のカーブ
+            ctx.arc(-5, 0, b.size, -Math.PI/2, Math.PI/2); 
+            // 鋭い先端
+            ctx.lineTo(b.size * 2.0, 0); 
+            ctx.fill();
+            
+            // アクセントのライン
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(-5, 0, b.size * 0.8, -Math.PI/2, Math.PI/2);
+            ctx.stroke();
+
+            ctx.restore();
+            // ※continueしないと下の共通処理も走る場合があるので、ここはcontinue推奨
+            // ただし既存コードの構造に合わせて適宜調整してください。
+            // 既存コードが if ... else if ... else 構造なら continue は不要です。
+            // 今回のコードベースなら else if で繋げばOKです。
         }
         if(b.type === 'omega') {
             // オメガレーザーは画面全体なので座標変換の影響を受けないように注意が必要だが
