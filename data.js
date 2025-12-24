@@ -150,12 +150,20 @@ const UPGRADE_DATA = [
       desc: v=>`敵を弾き飛ばす距離 +${v}`, 
       func: (v)=> stats.knockback+=v, 
       condition: ()=> ['Sniper','Assault','Novice','Trickster'].includes(player.class) },
+
+    { id: 'dodge', icon: '🍃', title: '回避', val: 5, unit: '%', 
+      desc: v=>`敵の攻撃を完全回避する確率 +${v}%`, 
+      func: (v)=> stats.dodge = Math.min(0.6, stats.dodge + v/100), // 最大60%でキャップ
+      condition: ()=> true },
+      
     { id: 'multi_blade', icon: '⚔️', title: '回転刃+', val: 1, unit: '', 
       desc: v=>`周囲の刃の数 +${v}`, 
       func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Melee' },
+
     { id: 'multi_wave', icon: '🌊', title: '衝撃波+', val: 1, unit: '', 
       desc: v=>`斬撃時の衝撃波 +${v}`, 
       func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Samurai' },
+      
     { id: 'multi_shot', icon: '🔫', title: 'マルチショット', val: 1, unit: '', 
       desc: v=>`同時発射数 +${v}`, 
       func: (v)=> stats.multi+=v, 
