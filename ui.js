@@ -1400,3 +1400,68 @@ function drawBossSprite(ctx, e) {
 
     ctx.restore();
 }
+
+function showBossReward() {
+    gameActive = false;
+    Sound.play('milestone'); // 重要な音を鳴らす
+    
+    let m = document.getElementById('menu-overlay'); 
+    let c = document.getElementById('card-area');
+    c.innerHTML = ''; 
+    m.style.display = 'flex';
+    
+    // タイトル設定
+    let titleEl = document.querySelector('#menu-title');
+    titleEl.innerText = "BOSS DEFEATED";
+    titleEl.style.color = "#ff0000"; // 赤色で強調
+    titleEl.style.textShadow = "0 0 20px red";
+
+    // まだ持っていないボススキルを抽出
+    let pool = BOSS_SKILL_DATA.filter(item => !item.isOwned || !item.isOwned());
+
+    // 表示する候補リスト
+    let opts = [];
+
+    if(pool.length > 0) {
+        // 残りがあるなら、ランダムに最大3つ選ぶ
+        pool.sort(() => Math.random() - 0.5);
+        opts = pool.slice(0, 3);
+    } else {
+        // 全部持っている場合は汎用報酬
+        opts.push({
+            id: 'boss_limit_break',
+            icon: '👑',
+            title: "覇者の風格",
+            desc: "全ステータスをさらに強化する (何度でも取得可能)",
+            func: () => {
+                stats.dmg *= 1.1; 
+                player.maxHp += 50; 
+                player.hp += 50;
+                stats.armor += 1;
+            }
+        });
+    }
+
+    // カード生成
+    opts.forEach(o => {
+        // funcプロパティを統一的に扱うためのラップ
+        let itemForUpgrade = { ...o, func: o.func || o.f };
+
+        let el = document.createElement('div'); 
+        el.className = 'card special'; // 黄色の枠（special）を使用
+        el.style.borderColor = '#ff0000'; // ボス用なので赤枠に上書き
+        el.style.boxShadow = '0 0 20px #ff0000';
+        
+        el.innerHTML = `<span class="icon">${o.icon}</span><h3 style="color:#ff8888">${o.title}</h3><p>${o.desc}</p>`;
+        
+        el.onclick = () => { 
+            applyUpgrade(itemForUpgrade); 
+            // タイトル色を戻して再開
+            document.querySelector('#menu-title').style.color = "white";
+            document.querySelector('#menu-title').style.textShadow = "0 0 15px #0ff";
+            resume(); 
+        };
+        
+        c.appendChild(el);
+    });
+}
