@@ -1256,11 +1256,23 @@ function addExp(v, silent) {
     exp += v; 
     if(exp >= nextExp) { 
         exp = 0; level++; 
+        
+        // ▼▼▼ 修正箇所 ▼▼▼
         if (level < 40) {
-            nextExp = Math.floor(nextExp * 1.15) + 500;
+            if (level >= 5) {
+                // Lv5以降: 必要経験値を大幅に増やし、爆速レベルアップを抑制
+                // (倍率を1.2倍、固定加算を+1500に強化)
+                nextExp = Math.floor(nextExp * 1.20) + 1500;
+            } else {
+                // Lv5未満: 今まで通りサクサク
+                nextExp = Math.floor(nextExp * 1.15) + 500;
+            }
         } else {
+            // Lv40以降は従来通りのペース
             nextExp = Math.floor(nextExp * 1.02) + 1000;
         }
+        // ▲▲▲ 修正ここまで ▲▲▲
+
         Sound.play('levelup'); updateUI(); 
         
         if(level === 5) showEvo(); 
