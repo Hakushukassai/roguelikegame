@@ -41,11 +41,15 @@ function update(ts) {
 
 function updateSystem(ts) {
     let gameTimeSec = (Date.now() - startTime) / 1000;
+
+    // ★ 追加: ダメージを受けていない時間を計測 (tsは1.0=1/60秒なので、60で割って秒換算)
+    if(gameActive) {
+        noDamageTimer += ts / 60;
+    }
     
     // シンギュラリティ
     if(level >= 100 && !singularityMode) {
         singularityMode = true;
-        // document.body.classList.add('singularity-mode');
         Sound.play('milestone');
     }
 
@@ -678,12 +682,87 @@ function updateEnemies(ts, gameTimeSec) {
                 else if(e.state === 'aim') { e.timer -= ts; if(e.timer <= 0) { e.state = 'dash'; e.timer = 30; e.vx = Math.cos(angle) * 14; e.vy = Math.sin(angle) * 14; } }
                 else if(e.state === 'dash') { e.x += e.vx * ts; e.y += e.vy * ts; e.timer -= ts; if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 50; } }
                 else if(e.state === 'cooldown') { e.timer -= ts; e.x += Math.cos(angle)*(e.speed*0.2)*ts; e.y += Math.sin(angle)*(e.speed*0.2)*ts; if(e.timer <= 0) e.state = 'chase'; }
+
             } else if(e.ai === 'shooter') {
                 if(dist > 250) { e.x += Math.cos(angle)*e.speed*ts; e.y += Math.sin(angle)*e.speed*ts; }
                 else if(dist < 150) { e.x -= Math.cos(angle)*e.speed*0.5*ts; e.y -= Math.sin(angle)*e.speed*0.5*ts; }
                 if(Math.random() < (1/120)*ts && dist < 600) { enemyBullets.push({x: e.x, y: e.y, vx: Math.cos(angle)*6, vy: Math.sin(angle)*6, size: 6, color: '#f0a'}); }
+
             } else if(e.ai === 'bat') {
                 let zig = Math.sin(gameTimeSec * 5) * 0.8; e.x += Math.cos(angle + zig) * e.speed * ts; e.y += Math.sin(angle + zig) * e.speed * ts;
+
+            } else if(e.type === 'boss') {
+                // 初期化: 状態がない場合は 'chase' に設定
+                if(!e.state) { e.state = 'chase'; e.timer = 180; e.attackCount = 0; }
+                e.timer -= ts;
+
+                if(e.state === 'chase') {
+                    // 通常移動（プレイヤーを追尾）
+                    e.x += Math.cos(angle) * e.speed * ts;
+                    e.y += Math.sin(angle) * e.speed * ts;
+                    
+                    // 時間経過で攻撃パターンへ移行
+                    if(e.timer <= 0) {
+                        e.attackCount++;
+                        // ランダムで「突進」か「弾幕」を選択
+                        // HPが減ると弾幕頻度アップ
+                        let actRand = Math.random();
+                        if(actRand < 0.5) {
+                            e.state = 'charge_warn'; e.timer = 60; // 突進予兆
+                            Sound.play('alert'); 
+                        } else {
+                            e.state = 'barrage'; e.timer = 120; e.subTimer = 0; // 弾幕開始
+                        }
+                    }
+                } 
+                else if(e.state === 'charge_warn') {
+                    // 突進予兆: その場で震える
+                    e.x += (Math.random()-0.5) * 5; e.y += (Math.random()-0.5) * 5;
+                    e.flash = 2; // 点滅させる
+                    
+                    if(e.timer <= 0) {
+                        e.state = 'charge_go'; e.timer = 40; 
+                        // 突進方向を確定
+                        e.vx = Math.cos(angle) * (e.speed * 4.0); // 通常の4倍速
+                        e.vy = Math.sin(angle) * (e.speed * 4.0);
+                        Sound.play('dash');
+                    }
+                }
+                else if(e.state === 'charge_go') {
+                    // 突進実行
+                    e.x += e.vx * ts; e.y += e.vy * ts;
+                    // 通り過ぎた場所にパーティクルを残す
+                    if(Math.random() < 0.5) createParticles(e.x, e.y, e.color, 1, 3);
+                    
+                    if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 60; }
+                }
+                else if(e.state === 'barrage') {
+                    // 回転弾幕攻撃
+                    e.subTimer -= ts;
+                    if(e.subTimer <= 0) {
+                        e.subTimer = 5; // 発射間隔
+                        let shotAngle = (e.timer * 0.2) + Math.sin(e.timer * 0.1); // スパイラル計算
+                        
+                        // 3方向発射
+                        for(let k=0; k<3; k++) {
+                            let a = shotAngle + (Math.PI*2/3)*k;
+                            enemyBullets.push({
+                                x: e.x, y: e.y, 
+                                vx: Math.cos(a)*5, vy: Math.sin(a)*5, 
+                                size: 8, color: '#f0f'
+                            });
+                        }
+                        Sound.play('shoot', 0.5);
+                    }
+                    if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 60; }
+                }
+                else if(e.state === 'cooldown') {
+                    // 攻撃後の硬直（少しゆっくり移動）
+                    e.x += Math.cos(angle) * (e.speed * 0.3) * ts;
+                    e.y += Math.sin(angle) * (e.speed * 0.3) * ts;
+                    
+                    if(e.timer <= 0) { e.state = 'chase'; e.timer = 120 + Math.random()*60; }
+                }
             } else {
                 e.x += Math.cos(angle) * e.speed * ts; e.y += Math.sin(angle) * e.speed * ts;
             }
@@ -1017,6 +1096,10 @@ function takeDamage(dmg) {
 
     player.hp -= dmg; 
     player.invincible = 20; 
+
+    // ★ 追加: ダメージを受けたので緊張度リセット
+    noDamageTimer = 0;
+
     screenShake = 15;
     createParticles(player.x, player.y, '#f00', 10, 4); updateUI();
     
@@ -1048,14 +1131,17 @@ function spawnEnemy(mode, time) {
 
     // 'random' の場合、現在のWAVEデータに基づいて敵を決める
     if(mode === 'random') {
-        // 現在の時間に対応するWAVE定義を探す（後ろから探して、timeを超えている最新のものを採用）
+        // ▼▼▼ 修正箇所ここから ▼▼▼
+        // 現在のレベルに対応するWAVE定義を探す（timeではなくlevelを見るように変更）
         let wave = WAVE_DATA[0];
         for (let i = WAVE_DATA.length - 1; i >= 0; i--) {
-            if (time >= WAVE_DATA[i].time) {
+            // ここでグローバル変数 'level' と WAVE_DATAの 'level' を比較
+            if (level >= WAVE_DATA[i].level) {
                 wave = WAVE_DATA[i];
                 break;
             }
         }
+        // ▲▲▲ 修正箇所ここまで ▲▲▲
 
         // 定義された敵リストからランダムに1つ選ぶ
         if (wave && wave.enemies.length > 0) {
@@ -1064,7 +1150,7 @@ function spawnEnemy(mode, time) {
             type = 'normal';
         }
         
-        // レベル50以上なら低確率でGolemを混ぜる
+        // レベル50以上なら低確率でGolemを混ぜる（既存ロジック維持）
         if (level >= 50 && Math.random() < 0.05) type = 'golem';
 
         if (level >= 60 && Math.random() < 0.05) type = 'iron_will';
@@ -1087,24 +1173,23 @@ function createEnemy(type, x, y) {
         knockbackTimer: 0 
     };
     
-    // 【改善1】HP上昇率を 1.10 (激重) から 1.07 (マイルド) に緩和
-    // これによりLv100でも「硬すぎる」現象を防ぎます
+    // 基本HP倍率
     let hpMult = Math.pow(1.07, level - 1); 
+
+    // ★ 追加: 緊張感システム (Tension System)
+    // ダメージを受けていない秒数 × 2% ずつ敵のHPが増加
+    // 例: 30秒無傷ならHP1.6倍、1分ならHP2.2倍。最大でHP4倍(150秒)まで制限
+    let tensionMult = 1.0 + Math.min(3.0, noDamageTimer * 0.02);
+    hpMult *= tensionMult;
 
     if(singularityMode) hpMult *= 2.0;
 
-    // 【改善2】HP満タン時のペナルティ仕様変更（重要！）
-    // 旧仕様: HPが 5倍〜8倍 になる → 硬すぎてつまらない
-    // 新仕様: HPは 1.3倍 だが、移動速度と攻撃力が跳ね上がる → 「殺るか殺られるか」の緊張感
+    // HP満タン時のペナルティ（既存の仕様）も維持しつつ乗算
     if (level >= 5 && player.hp >= player.maxHp * 0.9) {
-        // レベルが高いほど殺意が増す
         let dangerLevel = Math.min(3.0, 1.0 + (level / 50));
-        
-        hpMult *= 1.3; // 硬さは少し増す程度
-        e.speedMultOverride = 1.3 * dangerLevel; // 敵が加速する！
-        e.dmgMultOverride = 1.5; // 一撃が痛くなる
-        
-        // 視覚的にヤバさを伝える（少し赤く発光させるなどの処理があればベストだが、今回は速度で表現）
+        hpMult *= 1.3; 
+        e.speedMultOverride = 1.3 * dangerLevel; 
+        e.dmgMultOverride = 1.5; 
     }
 
     e.hp = data.baseHp * hpMult;
@@ -1115,12 +1200,10 @@ function createEnemy(type, x, y) {
     if (type === 'normal') spdBase += Math.random();
     
     let spdMult = (data.speedMult !== undefined) ? data.speedMult : 1.0;
-    // 上記のペナルティによる加速を適用
     if (e.speedMultOverride) spdMult *= e.speedMultOverride;
 
     e.speed = spdBase * spdMult;
     
-    // ダメージ計算
     let dmgBase = 10 + Math.floor(level * 1.5);
     if (e.dmgMultOverride) dmgBase *= e.dmgMultOverride;
     e.dmg = dmgBase;
@@ -1130,18 +1213,16 @@ function createEnemy(type, x, y) {
         e.variant = Math.floor(Math.random() * 4);
         e.dmg = 50 + (level * 2);
         let cycleMult = 1 + (bossCycleCounter * 0.5);
-        // 後半のボスはHPだけでなく行動速度も強化
         if(bossCycleCounter >= 3) {
             let lateGameFactor = bossCycleCounter - 2;
             cycleMult *= Math.pow(1.15, lateGameFactor);
-            e.speed = Math.min(8.0, e.speed + (lateGameFactor * 0.8)); // ボスも速くする
+            e.speed = Math.min(8.0, e.speed + (lateGameFactor * 0.8));
         }
         e.hp *= cycleMult;
     }
 
     if(singularityMode) { 
-        // e.color = '#000000'; 
-        e.speed *= 1.3; // シンギュラリティ中はさらに高速
+        e.speed *= 1.3; 
     }
 
     e.maxHp = e.hp; 
