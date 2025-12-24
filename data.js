@@ -163,7 +163,7 @@ const UPGRADE_DATA = [
     { id: 'multi_wave', icon: '🌊', title: '衝撃波+', val: 1, unit: '', 
       desc: v=>`斬撃時の衝撃波 +${v}`, 
       func: (v)=> stats.multi+=v, condition: ()=> player.class === 'Samurai' },
-      
+
     { id: 'multi_shot', icon: '🔫', title: 'マルチショット', val: 1, unit: '', 
       desc: v=>`同時発射数 +${v}`, 
       func: (v)=> stats.multi+=v, 
@@ -485,8 +485,32 @@ SkillSystem.on('onHit', (ctx) => {
     damageEnemy(target, phantomDmg, true);
     
     // エフェクト
-    if(target) {
-        createParticles(target.x, target.y, '#222', 1, target.size);
+    if(target && typeof particles !== 'undefined') {
+        // ★追加1: 音で知らせる (デジタルのような高い音)
+        // hit音のピッチを2.0(倍速)にして、キンッ！という鋭い音にする
+        Sound.play('hit', 2.0);
+
+        const pColor = '#d0f'; // ネオンパープル
+        const pSize = 6;       // サイズアップ (4 -> 6)
+        const pSpeed = 3;      // スピードダウン (6 -> 3) 残像が見やすくなる
+        const pLife = 20;      // 表示時間アップ (10 -> 20)
+
+        // ★追加2: 十字クロス (ゆっくり広がる)
+        particles.push({x:target.x, y:target.y, vx:0, vy:-pSpeed, life:pLife, size:pSize, color:pColor}); // 上
+        particles.push({x:target.x, y:target.y, vx:0, vy:pSpeed,  life:pLife, size:pSize, color:pColor}); // 下
+        particles.push({x:target.x, y:target.y, vx:-pSpeed, vy:0, life:pLife, size:pSize, color:pColor}); // 左
+        particles.push({x:target.x, y:target.y, vx:pSpeed, vy:0,  life:pLife, size:pSize, color:pColor}); // 右
+
+        // ★追加3: 幾何学的リング (ショックウェーブ)
+        // 敵を中心に紫の円がスッと広がる
+        particles.push({
+            type: 'shockwave', 
+            x: target.x, 
+            y: target.y, 
+            size: target.size, // 敵のサイズから開始
+            life: 15,          // 一瞬で消える
+            color: '#d0f'      // 紫
+        });
     }
 });
 
