@@ -615,7 +615,7 @@ function updateProjectiles(ts) {
                     if(stats.shotExplode) { Sound.play('explode', 2.0); enemies.forEach(subE => { if(!subE.dead && Math.hypot(subE.x-e.x, subE.y-e.y) < 50) damageEnemy(subE, stats.dmg*0.5); }); createParticles(e.x, e.y, '#fa0', 3, 2); }
                     if(stats.napalm && Math.random()<0.2) gasClouds.push({x:e.x, y:e.y, r:20, life:100, dmg:stats.dmg*0.2});
                     if(stats.splitShot && !b.isMini) { for(let k=0; k<2; k++) { let ang = (Math.random()*Math.PI*2); bullets.push({type:'normal', x:e.x, y:e.y, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, size:3, hit:[e.id], pierce:0, isMini:true}); } }
-                    if(stats.lightning > 0) triggerLightning(e, stats.lightning);
+                    if(stats.lightning > 0 && Math.random() < 0.25) triggerLightning(e, stats.lightning);
                     b.hit.push(e.id);
                     if(particles.length < MAX_PARTICLES) createParticles(b.x, b.y, '#ffffaa', 3, 2); 
                     if(b.pierce <= 0 && !stats.infinitePierce) { bullets.splice(i, 1); hit = true; break; } else { b.pierce--; }
