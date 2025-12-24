@@ -22,6 +22,7 @@ let bossCycleCounter = 0;
 let bossWarningTimer = 0;
 let bossWarningActive = false; 
 let singularityMode = false;
+let noDamageTimer = 0;
 
 // Guardian Sentry
 let sentries = [];
