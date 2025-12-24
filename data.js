@@ -77,6 +77,11 @@ const UPGRADE_DATA = [
           return `${effect}\n(Lv +${v})`;
       },
       func: (v)=> stats.phantomStrike += v },
+
+      { id: 'sonic_boom', icon: '🌪️', title: 'ソニックブーム', val: 1, unit: 'Lv', 
+      desc: v=>`確率で貫通衝撃波が発生\n(LvUP: 威力・サイズ・確率強化)`, 
+      func: (v)=> stats.sonicBoom+=v },
+
     { id: 'void_rift', icon: '🌀', title: 'ヴォイド・リフト', val: 1, unit: 'Lv', 
       desc: v=> {
           let effect = "定期的に次元の裂け目を発生させ、\n範囲内の敵を圧殺する";
@@ -694,3 +699,56 @@ const ACTIVE_SKILLS_DATA = {
     }
 };
 
+// ★新スキル: ソニックブーム (貫通衝撃波) - Melee調整版
+SkillSystem.on('onHit', (ctx) => {
+    const { enemy, dmg, isPhantom } = ctx;
+
+    // 未習得、またはファントム(追撃)の場合は発動しない
+    if (!stats.sonicBoom || stats.sonicBoom <= 0 || isPhantom) return;
+
+    // ■ 成長要素
+    let chance = 0.15 + (stats.sonicBoom * 0.05);
+    let dmgRate = 0.4 + (stats.sonicBoom * 0.1);
+    let sizeBase = 18 + (stats.sonicBoom * 2);
+
+    // ★★★ 修正箇所: Melee (ヴァンガード) の場合だけ確率を激減させる ★★★
+    if (player.class === 'Melee') {
+        chance *= 0.2; // 確率を1/5にする (例: 25% -> 5%)
+    }
+
+    if (Math.random() > chance) return;
+
+    // プレイヤーから敵への角度を計算
+    let angle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+
+    // 衝撃波を生成
+    bullets.push({
+        type: 'sonic',        
+        x: enemy.x,           
+        y: enemy.y,
+        vx: Math.cos(angle) * 15, 
+        vy: Math.sin(angle) * 15,
+        size: sizeBase,       
+        color: '#88ffff',     
+        hit: [enemy.id],      
+        pierce: 999,          
+        damageMult: dmgRate,  
+        life: 30,             
+        isMini: false
+    });
+
+    // 音（風切り音）
+    Sound.play('shoot', 0.5); 
+    
+    // エフェクト
+    if(typeof particles !== 'undefined') {
+        particles.push({
+            type: 'shockwave', 
+            x: enemy.x, 
+            y: enemy.y, 
+            size: sizeBase * 1.5, 
+            life: 15, 
+            color: '#ccffff'
+        });
+    }
+});
