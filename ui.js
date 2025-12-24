@@ -648,7 +648,9 @@ function draw() {
         ctx.fillStyle = e.frozen > 0 ? '#0ff' : (e.flash > 0 ? '#fff' : e.color); 
         ctx.beginPath();
         if(e.type === 'boss') {
-            ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
+            // ★変更: 四角形の描画をやめて、専用関数を呼び出す
+            drawBossSprite(ctx, e);
+
             // ボスのHPバー
             const barWidth = 120;  // バーの固定幅（ピクセル）
             const barHeight = 10;  // バーの高さ
@@ -1105,4 +1107,296 @@ function drawSecondEvo(ctx, p, angle) {
     }
     
     ctx.shadowBlur = 0; 
+}
+
+// ui.js の drawBossSprite をこれに置き換えてください
+
+// ui.js の drawBossSprite をこれに置き換えてください
+
+function drawBossSprite(ctx, e) {
+    ctx.save();
+
+    // ■ 1. 時間管理
+    const tickRate = 120; 
+    const tick = Math.floor(Date.now() / tickRate);
+    const time = Date.now() / 1000;
+
+    // ■ 2. 擬似乱数
+    let seed = tick + (e.id * 100);
+    const rand = () => {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+    };
+
+    // ■ 3. グリッチ・振動
+    let gx = 0, gy = 0;
+    if (rand() > 0.92) {
+        gx = (rand() - 0.5) * 10;
+        gy = (rand() - 0.5) * 10;
+    }
+    ctx.translate(e.x + gx, e.y + gy);
+
+    // バリアント決定
+    const variant = Math.floor(e.id * 100) % 5;
+
+    // --- 【重厚感の追加】 ---
+    // 発光エフェクト
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = e.color;
+    
+    // ベーススタイル
+    ctx.strokeStyle = e.color;
+    ctx.fillStyle = e.color; // 塗りつぶし用
+    ctx.lineWidth = 2.0;
+
+    // サイズ倍率
+    const s = e.size * 1.6;
+
+    // -----------------------------------------------------------
+    // ▼ ヘルパー関数群
+    // -----------------------------------------------------------
+
+    // 統合ビット描画 (重厚版: 中身が詰まっている)
+    const drawIntegratedBit = (x, y) => {
+        ctx.save();
+        ctx.translate(x, y);
+        
+        // 常に少し回転
+        if (tick % 2 === 0) ctx.rotate(Math.PI/4);
+        
+        // 塗りつぶしの核
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(-3, -3, 6, 6);
+        ctx.globalAlpha = 1.0;
+        
+        // 外枠
+        ctx.strokeRect(-5, -5, 10, 10);
+        
+        // 接続ライン (稀に本体中心へ伸びる)
+        if (rand() > 0.95) {
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-x, -y); ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
+        ctx.restore();
+    };
+
+    // 重厚な多角形描画 (内部を薄く塗る)
+    const drawSolidPoly = (verts) => {
+        ctx.beginPath();
+        verts.forEach((v, i) => {
+            if (i===0) ctx.moveTo(v.x, v.y); else ctx.lineTo(v.x, v.y);
+        });
+        ctx.closePath();
+        
+        // 内部を半透明で塗る (ガラスのような質感)
+        ctx.globalAlpha = 0.15;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+    };
+    
+    const getPolyVerts = (r, sides, offsetAngle=0) => {
+        let verts = [];
+        for(let i=0; i<sides; i++) {
+            let a = offsetAngle + (Math.PI * 2 / sides) * i;
+            verts.push({ x: Math.cos(a)*r, y: Math.sin(a)*r });
+        }
+        return verts;
+    };
+
+
+    // -----------------------------------------------------------
+    // ▼ 形状描画ロジック
+    // -----------------------------------------------------------
+
+    // ★ Type 0: [PLATONIC SOLID] (正二十面体/六角形構造)
+    if (variant === 0) {
+        ctx.rotate(tick * 0.05);
+
+        // 外殻 (六角形)
+        const outerVerts = getPolyVerts(s, 6);
+        drawSolidPoly(outerVerts);
+
+        // 内部構造 (三角形の集合)
+        ctx.beginPath();
+        outerVerts.forEach((v, i) => {
+            const next2 = outerVerts[(i+2)%6];
+            ctx.moveTo(v.x, v.y); ctx.lineTo(next2.x, next2.y);
+        });
+        // 内部も薄く塗ることで重なりを表現
+        ctx.globalAlpha = 0.1;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // ビット配置
+        outerVerts.forEach(v => drawIntegratedBit(v.x, v.y));
+    }
+
+
+    // ★ Type 1: [NAPOLEON'S THEOREM] (三円と三角形)
+    else if (variant === 1) {
+        const offset = s * 0.5;
+        // 回転
+        if (tick % 4 === 0) ctx.rotate(Math.PI);
+
+        const centers = [];
+        for(let i=0; i<3; i++) {
+            let a = (Math.PI*2/3)*i - (Math.PI/6);
+            let cx = Math.cos(a)*offset;
+            let cy = Math.sin(a)*offset;
+            centers.push({x:cx, y:cy});
+            
+            // 円 (塗りつぶしあり)
+            ctx.beginPath();
+            ctx.arc(cx, cy, s*0.6, 0, Math.PI*2);
+            ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1.0;
+            ctx.stroke();
+            
+            // ビット配置 (円の外周)
+            let bx = Math.cos(a) * (s*1.2);
+            let by = Math.sin(a) * (s*1.2);
+            drawIntegratedBit(bx, by);
+        }
+
+        // 中心を結ぶ正三角形 (実体のあるプレート感)
+        ctx.beginPath();
+        ctx.moveTo(centers[0].x, centers[0].y);
+        ctx.lineTo(centers[1].x, centers[1].y);
+        ctx.lineTo(centers[2].x, centers[2].y);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff'; // コア部分は白く輝かせる
+        ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1.0;
+        ctx.stroke();
+    }
+
+
+    // ★ Type 2: [PYTHAGOREAN FRACTAL] (ピタゴラスの木)
+    else if (variant === 2) {
+        // メイン正方形
+        ctx.beginPath();
+        ctx.rect(-s/2, -s/2, s, s);
+        ctx.globalAlpha = 0.2; ctx.fill(); ctx.globalAlpha = 1.0;
+        ctx.stroke();
+        
+        // 子正方形 (3方向に展開)
+        const childS = s * 0.6;
+        const dist = s/2 + childS/2;
+        const positions = [
+            {x:0, y:-dist, a:0},
+            {x:-dist, y:dist*0.5, a:-0.5},
+            {x:dist, y:dist*0.5, a:0.5}
+        ];
+
+        positions.forEach((p) => {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            // グリッチ回転
+            ctx.rotate(rand() > 0.8 ? 0 : p.a);
+            
+            ctx.beginPath(); ctx.rect(-childS/2, -childS/2, childS, childS);
+            ctx.globalAlpha = 0.2; ctx.fill(); ctx.globalAlpha = 1.0;
+            ctx.stroke();
+            
+            // ビット配置
+            drawIntegratedBit(0, 0);
+            ctx.restore();
+        });
+        
+        // 中央コアビット
+        drawIntegratedBit(0, 0);
+    }
+
+    // ★ Type 3: [FIBONACCI SEQUENCE] (黄金長方形と螺旋)
+    else if (variant === 3) {
+        // 中心位置調整
+        ctx.rotate(time * 0.2);
+        
+        let fibSize = s;
+        // 螺旋の中心へ向かって描画していく
+        for(let i=0; i<6; i++) {
+            // 正方形 (重厚な塗り)
+            ctx.beginPath(); ctx.rect(0, 0, fibSize, fibSize);
+            ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1.0;
+            ctx.stroke();
+
+            // 螺旋曲線
+            ctx.beginPath();
+            ctx.arc(fibSize, 0, fibSize, Math.PI/2, Math.PI); 
+            ctx.stroke();
+            
+            // ビット (各正方形の角)
+            drawIntegratedBit(0, 0);
+
+            // 座標変換: 次の正方形の位置へ移動・回転・縮小
+            ctx.translate(fibSize, fibSize);
+            ctx.rotate(-Math.PI/2);
+            // フィボナッチ比率で縮小
+            const phiInv = 0.618;
+            ctx.scale(phiInv, phiInv);
+        }
+    }
+
+    // ★ Type 4: [PERPETUAL MOTION] (二重円環・歯車)
+    else {
+        // 外側のリング (塗りあり)
+        ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI*2);
+        ctx.globalAlpha = 0.1; ctx.fill(); ctx.globalAlpha = 1.0;
+        ctx.stroke();
+        
+        // 内側のリング (逆回転)
+        ctx.save();
+        ctx.rotate(-time * 2);
+        ctx.beginPath(); ctx.arc(0, 0, s*0.6, 0, Math.PI*2);
+        ctx.globalAlpha = 0.1; ctx.fill(); ctx.globalAlpha = 1.0;
+        ctx.stroke();
+        
+        // 内部のスポーク
+        for(let i=0; i<4; i++) {
+            ctx.rotate(Math.PI/2);
+            ctx.moveTo(0, 0); ctx.lineTo(s*0.6, 0); ctx.stroke();
+        }
+        ctx.restore();
+
+        // 外周のブレードとビット
+        const bladeCount = 8;
+        const rot = time;
+        for(let i=0; i<bladeCount; i++) {
+            let a = (Math.PI*2/bladeCount) * i + rot;
+            let x = Math.cos(a) * s;
+            let y = Math.sin(a) * s;
+
+            // 接線ブレード
+            let tanA = a + Math.PI/2 + 0.4;
+            let len = s * 0.8;
+            
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + Math.cos(tanA)*len, y + Math.sin(tanA)*len);
+            ctx.stroke();
+
+            // 接続点ビット
+            if (i % 2 === 0) {
+                drawIntegratedBit(x, y);
+            }
+        }
+    }
+
+    // --- 【共通グリッチ: 走査線・テキスト】 ---
+    if (rand() > 0.85) {
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        const ly = (rand()-0.5) * s * 2.5;
+        // スキャンライン
+        ctx.fillRect(-s*2, ly, s*4, 1);
+        
+        // 謎の数式テキスト
+        ctx.font = '10px monospace';
+        ctx.fillStyle = e.color;
+        ctx.fillText(`Φ:${(1.618 + rand()*0.01).toFixed(4)}`, s, ly - 2);
+        ctx.restore();
+    }
+
+    ctx.restore();
 }
