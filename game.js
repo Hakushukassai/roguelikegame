@@ -72,10 +72,16 @@ function updatePlayer(ts) {
     if(player.shootCd > 0) player.shootCd -= ts;     
 
     // 自然回復
-    if(Math.random() < (1/60) * ts && player.hp < player.maxHp) {
-        player.hp = Math.min(player.maxHp, player.hp + stats.regen);
-        updateUI();
+    if(player.hp < player.maxHp) {
+        // 確率ではなく、経過時間(ts)に応じて毎フレーム少しずつ回復させる
+        // stats.regen は「1秒あたりの回復量」なので 60 で割る
+        let healAmount = (stats.regen / 60) * ts;
+        player.hp = Math.min(player.maxHp, player.hp + healAmount);
     }
+    
+    // HPの変化を毎フレーム描画に反映させる
+    updateUI();
+    
     // ナノリペア
     if(stats.nanoRepair && player.hp < player.maxHp * 0.3) {
         player.hp = Math.min(player.maxHp, player.hp + (50/60)*ts);
