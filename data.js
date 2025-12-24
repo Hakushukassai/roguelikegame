@@ -700,28 +700,29 @@ const ACTIVE_SKILLS_DATA = {
 };
 
 // ★新スキル: ソニックブーム (貫通衝撃波) - Melee調整版
+// ★新スキル: ソニックブーム (貫通衝撃波) - 頻度調整版
 SkillSystem.on('onHit', (ctx) => {
     const { enemy, dmg, isPhantom } = ctx;
 
-    // 未習得、またはファントム(追撃)の場合は発動しない
     if (!stats.sonicBoom || stats.sonicBoom <= 0 || isPhantom) return;
 
-    // ■ 成長要素
-    let chance = 0.15 + (stats.sonicBoom * 0.05);
+    // ■ 成長要素（頻度を全体的に下方修正）
+    // 修正前: 0.15 + (Lv * 0.05) -> Lv1: 20%, Lv5: 40%
+    // 修正後: 0.08 + (Lv * 0.04) -> Lv1: 12%, Lv5: 28%
+    let chance = 0.08 + (stats.sonicBoom * 0.04);
+    
     let dmgRate = 0.4 + (stats.sonicBoom * 0.1);
     let sizeBase = 18 + (stats.sonicBoom * 2);
 
-    // ★★★ 修正箇所: Melee (ヴァンガード) の場合だけ確率を激減させる ★★★
+    // Melee (ヴァンガード) の場合だけさらに確率を激減させる
     if (player.class === 'Melee') {
-        chance *= 0.2; // 確率を1/5にする (例: 25% -> 5%)
+        chance *= 0.2; 
     }
 
     if (Math.random() > chance) return;
 
-    // プレイヤーから敵への角度を計算
     let angle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
 
-    // 衝撃波を生成
     bullets.push({
         type: 'sonic',        
         x: enemy.x,           
@@ -737,10 +738,8 @@ SkillSystem.on('onHit', (ctx) => {
         isMini: false
     });
 
-    // 音（風切り音）
     Sound.play('shoot', 0.5); 
     
-    // エフェクト
     if(typeof particles !== 'undefined') {
         particles.push({
             type: 'shockwave', 
