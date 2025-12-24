@@ -401,14 +401,14 @@ const SECOND_EVO_DATA = [
 // 1. 敵の出現パターン（WAVEデータ）
 // time: 開始時間(秒), enemies: その時間帯に出る敵のリスト
 const WAVE_DATA = [
-    { time: 0,   enemies: ['normal'] },
-    { time: 30,  enemies: ['normal', 'splitter'] },
-    { time: 60,  enemies: ['normal', 'splitter', 'bat'] },
-    { time: 120, enemies: ['normal', 'bat', 'dasher'] },
-    { time: 150, enemies: ['splitter', 'dasher', 'shooter'] },
-    { time: 180, enemies: ['dasher', 'shooter', 'tank'] },
-    { time: 240, enemies: ['shooter', 'tank',] },
-    // 時間経過でもっと難しい組み合わせを追加可能
+    { level: 1,  enemies: ['normal'] },
+    { level: 10, enemies: ['normal', 'splitter'] },
+    { level: 20, enemies: ['normal', 'splitter', 'bat'] },
+    { level: 30, enemies: ['normal', 'bat', 'dasher'] },
+    { level: 40, enemies: ['splitter', 'dasher', 'shooter'] },
+    { level: 50, enemies: ['dasher', 'shooter', 'tank'] },
+    { level: 60, enemies: ['shooter', 'tank'] },
+    { level: 80, enemies: ['tank', 'dasher', 'bat'] }, // 終盤のラッシュ用
 ];
 
 // 2. スキル表示用リスト
