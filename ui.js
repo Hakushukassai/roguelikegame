@@ -158,6 +158,35 @@ function showMilestone() {
     }
 }
 
+function getCurrentStatString(id) {
+    const s = stats;
+    switch(id) {
+        case 'dmg_p': return `攻撃力: ${Math.floor(s.dmg)}`;
+        case 'hp': return `最大HP: ${Math.floor(player.maxHp)}`;
+        case 'spd': return `移動速度: ${s.spd.toFixed(1)}`;
+        case 'crit': return `会心率: ${(s.critChance*100).toFixed(0)}%`;
+        case 'magnet': return `収集範囲: ${Math.floor(s.magnet)}`;
+        case 'rate': return `連射速度: ${(60/s.rate).toFixed(1)}/秒`;
+        case 'lightning': return `レベル: ${s.lightning}`;
+        case 'phantom_strike': return `レベル: ${s.phantomStrike}`;
+        case 'void_rift': return `レベル: ${s.voidRift}`;
+        case 'regen': return `リジェネ: ${s.regen}/秒`;
+        case 'drone': return `所持数: ${s.drones}`;
+        case 'missile': return `レベル: ${s.missile}`;
+        case 'chakram': return `所持数: ${s.chakram}`;
+        case 'homing': return `レベル: ${s.homing}`;
+        case 'area': return `攻撃範囲: ${(s.areaScale*100).toFixed(0)}%`;
+        case 'bullet_speed': return `弾速: ${s.bulletSpeed.toFixed(0)}`;
+        case 'pierce': return `貫通数: ${s.pierce}`;
+        case 'duration': return `効果時間: ${(s.duration*100).toFixed(0)}%`;
+        case 'armor': return `装甲: ${s.armor}`;
+        case 'knockback': return `衝撃力: ${s.knockback}`;
+        case 'dodge': return `回避率: ${(s.dodge*100).toFixed(0)}%`;
+        case 'multi_blade': case 'multi_wave': case 'multi_shot': return `個数: ${s.multi}`;
+        default: return '';
+    }
+}
+
 function showUpgrade() {
     gameActive = false;
     let m = document.getElementById('menu-overlay'); 
@@ -166,13 +195,9 @@ function showUpgrade() {
     m.style.display = 'flex';
     document.querySelector('#menu-title').innerText = "LEVEL UP!";
 
-    // 1. 出現条件(condition)を満たすアイテムだけを抽出
     let validPool = UPGRADE_DATA.filter(item => !item.condition || item.condition());
-    
     if (validPool.length < 3) validPool = UPGRADE_DATA.slice(0, 5); 
 
-    // 2. 重み付け抽選（簡易版）
-    // 本来はweightを見るべきですが、まずはランダムで
     validPool.sort(() => Math.random() - 0.5);
     
     let choices = [];
@@ -183,19 +208,15 @@ function showUpgrade() {
         if (pickedIds.has(item.id)) continue; 
         
         let opt = { ...item };
-        
-        // レアリティ判定
         if (Math.random() < 0.1) {
             opt.isRare = true;
             let mult = (opt.id === 'hp') ? 3 : 2;
             opt.val = Math.floor(opt.val * mult);
         }
-        
         choices.push(opt);
         pickedIds.add(item.id);
     }
 
-    // 3. カード生成
     choices.forEach(o => {
         let el = document.createElement('div'); 
         el.className = 'card';
@@ -204,12 +225,19 @@ function showUpgrade() {
         let title = o.isRare ? `✨ ${o.title}` : o.title;
         let desc = o.desc(o.val);
         
-        el.innerHTML = `<span class="icon">${o.icon}</span><h3>${title}</h3><p>${desc}</p>`;
+        // ★変更点: 現在のステータス値を取得して表示に追加
+        let currentStat = getCurrentStatString(o.id);
         
-        // ▼▼▼ 修正箇所: 直接 func を呼ばず、applyUpgrade を通す ▼▼▼
+        el.innerHTML = `
+            <span class="icon">${o.icon}</span>
+            <h3>${title}</h3>
+            <p>${desc}</p>
+            <div style="font-size:10px; color:#888; border-top:1px solid #444; margin-top:6px; padding-top:4px;">
+                現在: <span style="color:#0ff">${currentStat}</span>
+            </div>
+        `;
+        
         el.onclick = () => { applyUpgrade(o, o.val); resume(); };
-        // ▲▲▲ 修正完了 ▲▲▲
-        
         c.appendChild(el);
     });
 }
@@ -302,20 +330,21 @@ function updateStatsDisplay() {
     let atkPerSec = (60 / s.rate).toFixed(1); 
     
     let html = `
-        ATK  : ${Math.floor(s.dmg)} <br>
-        ASP  : ${atkPerSec}/s <br>
-        CRIT : ${(s.critChance * 100).toFixed(0)}% <br>
-        AREA : ${(s.areaScale * 100).toFixed(0)}% <br>
-        SPD  : ${s.spd.toFixed(1)} <br>
-        BSPD : ${s.bulletSpeed.toFixed(0)} <br>
-        PIRC : ${s.pierce} <br>
-        MAG  : ${Math.floor(s.magnet)} <br>
-        ARM  : ${s.armor}
+        <span style="color:#ff8888">攻撃力 </span> : ${Math.floor(s.dmg)} <br>
+        <span style="color:#ffff88">連射 </span> : ${atkPerSec}/秒 <br>
+        <span style="color:#88ff88">移動 </span> : ${s.spd.toFixed(1)} <br>
+        <span style="color:#88ffff">範囲 </span> : ${(s.areaScale * 100).toFixed(0)}% <br>
+        <span style="color:#ff88ff">会心 </span> : ${(s.critChance * 100).toFixed(0)}% <br>
     `;
     
-    if(s.duration > 1.0) html += `<br>DUR  : ${(s.duration*100).toFixed(0)}%`;
-    if(s.knockback > 0) html += `<br>KBCK : ${s.knockback}`;
-
+    // 0より大きい場合のみ表示する項目
+    if(s.pierce > 0) html += `貫通 : ${s.pierce} <br>`;
+    if(s.magnet > 150) html += `収集 : ${Math.floor(s.magnet)} <br>`;
+    if(s.armor > 0) html += `装甲 : ${s.armor} <br>`;
+    if(s.dodge > 0) html += `回避 : ${(s.dodge * 100).toFixed(0)}% <br>`;
+    if(s.regen > 1) html += `回復 : ${s.regen}/秒 <br>`;
+    if(s.bulletSpeed > 20 || s.bulletSpeed < 10) html += `弾速 : ${s.bulletSpeed.toFixed(0)} <br>`;
+    
     document.getElementById('stats-list').innerHTML = html;
 }
 
@@ -325,7 +354,10 @@ function updateUI() {
     document.getElementById('hp-bar-fill').style.width = hpPer + '%';
     document.getElementById('disp-hp-val').innerText = Math.floor(player.hp);
     document.getElementById('disp-hp-max').innerText = Math.floor(player.maxHp);
-    document.getElementById('disp-regen').innerText = stats.regen;
+    
+    // ここでリジェネ表示を書き換え（/s -> /秒）
+    document.getElementById('hp-regen-text').innerHTML = `+<span id="disp-regen">${stats.regen}</span>/秒`;
+    
     document.getElementById('disp-score').innerText = score;
 
     updateStatsDisplay();
@@ -335,46 +367,56 @@ function updateSkillList() {
     let list = document.getElementById('skill-list');
     let html = "";
     
-    if(singularityMode) html += `<div style="color:#000; text-shadow:0 0 5px #fff; font-weight:bold;">🌌 SINGULARITY MODE</div>`;
+    if(singularityMode) html += `<div style="color:#000; text-shadow:0 0 5px #fff; font-weight:bold;">🌌 限界突破モード</div>`;
 
-    // 1. リスト定義されている単純なスキルを一括表示
+    // 英語名を日本語表示に変換するマップ
+    const JP_NAMES = {
+        'omegaLaser': '⚡ オメガレーザー',
+        'absoluteZero': '❄️ アブソリュートゼロ',
+        'titan': '🦍 タイタン',
+        'gatling': '⚙️ ガトリング',
+        'railgun': '🚅 レールガン',
+        'chainBurst': '💥 チェーンバースト',
+        'electroFence': '⚡ エレクトロフェンス',
+        'shrapnel': '💥 シュラプネル',
+        'reactiveArmor': '⚡ リアクティブアーマー',
+        'earthquake': '🌎 アースクエイク'
+    };
+
     SKILL_DISPLAY_LIST.forEach(item => {
         if (stats[item.key]) {
-            html += `<div style="color:${item.color}">${item.label}</div>`;
+            // マップにあれば日本語を、なければ元のラベルを使用
+            let label = JP_NAMES[item.key] || item.label;
+            html += `<div style="color:${item.color}">${label}</div>`;
         }
     });
 
     activeSkills.forEach(skill => {
-        // IDを大文字にしてラベル化 (例: earthquake -> EARTHQUAKE)
-        let label = skill.id.replace(/([A-Z])/g, ' $1').toUpperCase();
-        // クールダウン残り時間の表示
-        let cdText = skill.timer <= 0 ? "READY" : (Math.ceil(skill.timer/60) + "s");
-        
+        // アクティブスキルのIDも日本語化
+        let label = JP_NAMES[skill.id] || skill.id.toUpperCase();
+        let cdText = skill.timer <= 0 ? "OK" : (Math.ceil(skill.timer/60) + "秒");
         html += `<div style="color:#0ff">⚡ ${label} [${cdText}]</div>`;
     });
     
-    // 2. フォーマットが必要な特殊表示のスキル
-    // Guardian / Sentry
-    if(stats.sentrySystem) html += `<div style="color:#0f0">🏗️ SENTRY SYS (${sentries.length})</div>`;
-    
-    // Siege Mode
+    if(stats.sentrySystem) html += `<div style="color:#0f0">🏗️ セントリー (${sentries.length})</div>`;
     if(stats.siegeMode) {
         let active = stats.isStationary ? "(ON)" : "(OFF)";
-        html += `<div style="color:#0f0">🏯 SIEGE ${active}</div>`;
+        html += `<div style="color:#0f0">🏯 シージモード ${active}</div>`;
     }
-    
-    // Force Field
     if(stats.forceField) {
-        let ready = stats.forceFieldCd <= 0 ? "READY" : Math.ceil(stats.forceFieldCd/60)+"s";
-        html += `<div style="color:#0ff">🛡️ FORCE FIELD [${ready}]</div>`;
+        let ready = stats.forceFieldCd <= 0 ? "OK" : Math.ceil(stats.forceFieldCd/60)+"秒";
+        html += `<div style="color:#0ff">🛡️ バリア [${ready}]</div>`;
     }
 
-    // 数値表示が必要なもの
-    if(stats.armor > 0) html += `<div style="color:#8f8">🛡️ ARMOR +${stats.armor}</div>`;
+    // パッシブ系スキルのレベル表示
+    if(stats.lightning > 0) html += `<div style="color:#ff0">🌩️ ライトニング Lv${stats.lightning}</div>`;
+    if(stats.phantomStrike > 0) html += `<div style="color:#ccc">👻 ファントム Lv${stats.phantomStrike}</div>`;
+    if(stats.voidRift > 0) html += `<div style="color:#d0f">🌀 ヴォイド Lv${stats.voidRift}</div>`;
     if(stats.missile > 0) html += `<div style="color:#fa0">🚀 ミサイル Lv${stats.missile}</div>`;
     if(stats.drones > 0) html += `<div style="color:#ff0">🛰️ ドローン x${stats.drones}</div>`;
-    if(stats.auraScale > 1) html += `<div style="color:#f00">🛡️ オーラ倍率 x${stats.auraScale.toFixed(1)}</div>`;
-    if(stats.lifesteal > 0) html += `<div style="color:#f0f">🧛 吸血 +${stats.lifesteal}</div>`;
+    if(stats.homing > 0) html += `<div style="color:#8ff">👁️ ホーミング Lv${stats.homing}</div>`;
+    if(stats.chakram > 0) html += `<div style="color:#f88">🥏 チャクラム x${stats.chakram}</div>`;
+    if(stats.poison > 0) html += `<div style="color:#a0f">☣️ ポイズン Lv${stats.poison}</div>`;
 
     list.innerHTML = html;
 }
