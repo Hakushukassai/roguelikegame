@@ -58,6 +58,7 @@ let stats = {
     aura: false, auraRange: 0,
     regen: 1, magnet: 150, 
     homing: 0, lightning: 0, poison: 0, spinBlade: 0, chakram: 0,
+    sonicBoom: 0,
     phantomStrike: 0,
     voidRift: 0,
     missile: 0, drones: 0, auraScale: 1,
