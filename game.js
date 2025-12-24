@@ -1127,6 +1127,7 @@ function createEnemy(type, x, y) {
 
     // ボス補正
     if(type === 'boss') { 
+        e.variant = Math.floor(Math.random() * 4);
         e.dmg = 50 + (level * 2);
         let cycleMult = 1 + (bossCycleCounter * 0.5);
         // 後半のボスはHPだけでなく行動速度も強化
@@ -1177,12 +1178,28 @@ function damageEnemy(e, dmg, isPhantom = false) {
     // 攻撃ヒット後のイベント (ファントムストライク等はここで発動)
     SkillSystem.trigger('onHit', { enemy: e, dmg: dmg, isPhantom: isPhantom });
 
-    let textColor = isPhantom ? '#aaa' : (isCrit ? '#ff0' : '#fff');
+    let textColor = isPhantom ? '#e0aaff' : (isCrit ? '#ff0' : '#fff');
+
+    // 追撃発生時のパーティクル（通常のヒット演出も少し出す）
     if(isPhantom) {
-        if(Math.random() < 0.2) createParticles(e.x, e.y, '#888', 1, 2);
+        if(Math.random() < 0.2) createParticles(e.x, e.y, '#e0aaff', 2, 2);
     } else {
         if(particles.length < MAX_PARTICLES && Math.random() < 0.2) createParticles(e.x, e.y, '#fff', 1, 2); 
         Sound.play('hit');
+    }
+
+    // ダメージテキスト表示（アイコン等の装飾は一切なし）
+    // ファントム(isPhantom)の場合も必ず表示するように条件に追加
+    if(isCrit || e.type === 'boss' || texts.length < 5 || Math.random() < 0.2 || isPhantom) {
+        if(texts.length < MAX_TEXTS) {
+            texts.push({
+                x: e.x, 
+                y: e.y, 
+                str: Math.floor(dmg), // 数字のみ
+                life: 20, 
+                color: textColor 
+            });
+        }
     }
 
     if(isCrit || e.type === 'boss' || texts.length < 5 || Math.random() < 0.2) {
@@ -1192,7 +1209,13 @@ function damageEnemy(e, dmg, isPhantom = false) {
     // 敵死亡時の処理 (ここはまだ長いので、次の段階で整理しても良い)
     if(e.hp <= 0) {
         e.dead = true; 
-        Sound.play('explode'); 
+        
+        if(e.type === 'boss') {
+            Sound.play('boss_kill');
+        } else {
+            Sound.play('explode'); 
+        }
+
         screenShake = e.type === 'boss' ? 20 : 2; 
 
         // ▼▼▼ 修正: ここにあった大量のスキル分岐をこの1行に集約 ▼▼▼
