@@ -1293,11 +1293,15 @@ function damageEnemy(e, dmg, isPhantom = false) {
         
         if(e.type === 'boss') {
             Sound.play('boss_kill');
+            // ★追加: 演出のために少し遅らせて報酬画面を出す (1.5秒後)
+            setTimeout(() => {
+                if(gameActive) showBossReward();
+            }, 1500);
         } else {
             Sound.play('explode'); 
         }
 
-        screenShake = e.type === 'boss' ? 20 : 2; 
+        screenShake = e.type === 'boss' ? 20 : 2;
 
         // ▼▼▼ 修正: ここにあった大量のスキル分岐をこの1行に集約 ▼▼▼
         SkillSystem.trigger('onKill', { enemy: e, player: player });
