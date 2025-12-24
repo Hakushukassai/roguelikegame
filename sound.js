@@ -78,7 +78,18 @@ const Sound = {
             duration = 0.5; osc.type='sine'; osc.frequency.setValueAtTime(440, now); osc.frequency.linearRampToValueAtTime(880, now+0.25); osc.frequency.linearRampToValueAtTime(1760, now+0.5); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
         } else if(type === 'bomb') {
             duration = 1.0; osc.type='sawtooth'; osc.frequency.setValueAtTime(50, now); osc.frequency.linearRampToValueAtTime(20, now+1.0); gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0, now+1.0);
+        } else if(type === 'boss_kill') {
+            duration = 3.0; // 長い余韻
+            osc.type='sawtooth'; 
+            // 重低音から急速に下がる
+            osc.frequency.setValueAtTime(120, now); 
+            osc.frequency.exponentialRampToValueAtTime(10, now+3.0); 
+            // 揺らぎを加える（擬似的な和音感）
+            gain.gain.setValueAtTime(0.6, now); 
+            gain.gain.exponentialRampToValueAtTime(0.01, now+3.0);
         }
+        
+        
         osc.start(now); osc.stop(now + duration);
         Sound.activeEndTimes.push(now + duration + 0.05);
     }
