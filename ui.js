@@ -208,11 +208,16 @@ function showUpgrade() {
         if (pickedIds.has(item.id)) continue; 
         
         let opt = { ...item };
+        
+        // ▼▼▼ 修正箇所：レア判定ロジック ▼▼▼
         if (Math.random() < 0.1) {
             opt.isRare = true;
-            let mult = (opt.id === 'hp') ? 3 : 2;
+            // HPなら3倍、リジェネなら5倍、それ以外は2倍
+            let mult = (opt.id === 'hp') ? 3 : (opt.id === 'regen' ? 5 : 2);
             opt.val = Math.floor(opt.val * mult);
         }
+        // ▲▲▲ 修正ここまで ▲▲▲
+
         choices.push(opt);
         pickedIds.add(item.id);
     }
@@ -225,7 +230,6 @@ function showUpgrade() {
         let title = o.isRare ? `✨ ${o.title}` : o.title;
         let desc = o.desc(o.val);
         
-        // ★変更点: 現在のステータス値を取得して表示に追加
         let currentStat = getCurrentStatString(o.id);
         
         el.innerHTML = `
