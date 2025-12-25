@@ -1331,8 +1331,15 @@ function damageEnemy(e, dmg, isPhantom = false) {
         
         expOrbs.push({x: e.x, y: e.y, size: orbType.size, val: orbType.val, color: orbType.color, pitch: orbType.pitch});
 
-        if(Math.random() < 0.002) items.push({type: 'magnet', x: e.x, y: e.y});
-        if(Math.random() < 0.0005) items.push({type: 'bomb', x: e.x, y: e.y});
+        if(Math.random() < 0.002) {
+            if(items.length >= MAX_ITEMS) items.shift(); // 上限なら古いものを消す
+            items.push({type: 'magnet', x: e.x, y: e.y});
+        }
+        if(Math.random() < 0.0005) {
+            if(items.length >= MAX_ITEMS) items.shift(); // 上限なら古いものを消す
+            items.push({type: 'bomb', x: e.x, y: e.y});
+        }
+        // ▲▲▲ 修正 ▲▲▲
     }
 }
 
