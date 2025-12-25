@@ -4,6 +4,7 @@ const MAX_PARTICLES = 500;
 const MAX_ORBS = 400; 
 const MAX_TEXTS = 50;
 const MAX_SOUND_CONCURRENT = 32; 
+const MAX_ITEMS = 10;
 
 // --- 敵のステータス定義データベース ---
 const ENEMY_DATA = {
