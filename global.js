@@ -24,6 +24,8 @@ let bossWarningActive = false;
 let singularityMode = false;
 let noDamageTimer = 0;
 
+let nebulas = [];
+
 // Guardian Sentry
 let sentries = [];
 let sentryTimer = 0;
@@ -42,6 +44,7 @@ let player = {
     // Unique states
     sunCharge: 0, // Crusader
     isMoving: false
+    
 };
 
 let stats = {
