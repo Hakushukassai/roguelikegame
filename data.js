@@ -17,7 +17,8 @@ const ENEMY_DATA = {
     shooter: { baseHp: 30,   size: 15, color: '#ff3333', baseSpeed: 1.8, ai: 'shooter' },
     tank:    { baseHp: 150,  size: 24, color: '#ff3333', baseSpeed: 1.5, ai: 'tank' },
     minion:  { baseHp: 12,   size: 10, color: '#ff3333', baseSpeed: 3.0, ai: 'normal' },
-    normal:  { baseHp: 15,   size: 14, color: '#ff3333', baseSpeed: 2.5, ai: 'normal' }
+    normal:  { baseHp: 15,   size: 14, color: '#ff3333', baseSpeed: 2.5, ai: 'normal' },
+    asteroid: { baseHp: 600, size: 40, color: '#888888', baseSpeed: 0.5, ai: 'drift' }
 };
 
 // --- アップグレード（通常レベルアップ）の定義 ---
