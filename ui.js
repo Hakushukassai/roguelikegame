@@ -443,12 +443,10 @@ function draw() {
     ctx.fillStyle = '#050505'; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 2. カメラ位置の計算 (プレイヤーが画面中心に来るためのオフセット)
-    // 画面揺れ(shake)もここに加算します
+    // 2. カメラ位置の計算
     let shakeX = (Math.random() - 0.5) * screenShake;
     let shakeY = (Math.random() - 0.5) * screenShake;
     
-    // カメラの左上座標 = プレイヤー座標 - 画面サイズの半分
     let camX = player.x - canvas.width / 2;
     let camY = player.y - canvas.height / 2;
 
@@ -456,31 +454,50 @@ function draw() {
     // 3. 全体をカメラの分だけ逆方向にずらす
     ctx.translate(-camX + shakeX, -camY + shakeY);
 
-    // --- 背景グリッドの描画 (無限に見せる工夫) ---
-    // プレイヤーの位置に合わせて線を描く位置を調整
+    // --- 背景グリッドの描画 ---
     const gridSize = 100;
-    // 画面に見えている範囲だけ描画するための計算
     let startX = Math.floor(camX / gridSize) * gridSize;
     let startY = Math.floor(camY / gridSize) * gridSize;
     
     ctx.strokeStyle = '#1a1a1a'; 
     ctx.lineWidth = 1; 
     ctx.beginPath();
-    // 縦線
     for(let i = startX; i < startX + canvas.width + gridSize; i += gridSize) { 
         ctx.moveTo(i, startY - gridSize); 
         ctx.lineTo(i, startY + canvas.height + gridSize); 
     }
-    // 横線
     for(let i = startY; i < startY + canvas.height + gridSize; i += gridSize) { 
         ctx.moveTo(startX - gridSize, i); 
         ctx.lineTo(startX + canvas.width + gridSize, i); 
     }
     ctx.stroke();
-    // ------------------------------------------
 
-    // ★以下は元の描画ロジックとほぼ同じですが、
-    // 既に ctx.translate しているので、オブジェクトの x, y をそのまま描画すればOKです。
+    // ------------------------------------------
+    // ★追加: 星雲 (Nebula) の描画
+    // ------------------------------------------
+    if(typeof nebulas !== 'undefined') {
+        nebulas.forEach(n => {
+            // 画面外カリング
+            if(Math.abs(n.x - player.x) > canvas.width && Math.abs(n.y - player.y) > canvas.height) return;
+
+            let grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.2, n.x, n.y, n.r);
+            grad.addColorStop(0, n.color);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI*2); ctx.fill();
+            
+            // 粒子感
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            for(let i=0; i<3; i++) {
+                 let px = n.x + Math.sin(Date.now()*0.001 + i)*n.r*0.5;
+                 let py = n.y + Math.cos(Date.now()*0.002 + i)*n.r*0.5;
+                 ctx.beginPath(); ctx.arc(px, py, n.r*0.1, 0, Math.PI*2); ctx.fill();
+            }
+        });
+    }
+
+    // --- 各種エフェクト描画 ---
 
     // 絶対零度オーラ
     if(stats.absoluteZero) {
@@ -490,7 +507,9 @@ function draw() {
     }
     // 電気柵
     if(stats.electroFence) {
-        ctx.strokeStyle = `rgba(136, 255, 255, ${(electroFenceTimer/60)})`;
+        // electroFenceTimer が未定義の場合のエラー防止
+        let timerVal = (typeof electroFenceTimer !== 'undefined') ? electroFenceTimer : 0;
+        ctx.strokeStyle = `rgba(136, 255, 255, ${(timerVal/60)})`;
         ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(player.x, player.y, 150, 0, Math.PI*2); ctx.stroke();
     }
 
@@ -598,64 +617,27 @@ function draw() {
             return;
         }
         else if(b.type === 'sonic') {
-            ctx.save();
-            ctx.translate(b.x, b.y);
-            // 進行方向に向ける
-            ctx.rotate(Math.atan2(b.vy, b.vx));
-            
-            // 三日月状の衝撃波を描画
-            ctx.globalAlpha = 0.8;
-            ctx.fillStyle = b.color || '#ccffff';
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = b.color || '#ccffff';
-            
-            ctx.beginPath();
-            // 外側のカーブ
-            ctx.arc(-5, 0, b.size, -Math.PI/2, Math.PI/2); 
-            // 鋭い先端
-            ctx.lineTo(b.size * 2.0, 0); 
-            ctx.fill();
-            
-            // アクセントのライン
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(-5, 0, b.size * 0.8, -Math.PI/2, Math.PI/2);
-            ctx.stroke();
-
+            ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx));
+            ctx.globalAlpha = 0.8; ctx.fillStyle = b.color || '#ccffff'; ctx.shadowBlur = 10; ctx.shadowColor = b.color || '#ccffff';
+            ctx.beginPath(); ctx.arc(-5, 0, b.size, -Math.PI/2, Math.PI/2); ctx.lineTo(b.size * 2.0, 0); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-5, 0, b.size * 0.8, -Math.PI/2, Math.PI/2); ctx.stroke();
             ctx.restore();
-            // ※continueしないと下の共通処理も走る場合があるので、ここはcontinue推奨
-            // ただし既存コードの構造に合わせて適宜調整してください。
-            // 既存コードが if ... else if ... else 構造なら continue は不要です。
-            // 今回のコードベースなら else if で繋げばOKです。
+            return;
         }
-        if(b.type === 'omega') {
-            // オメガレーザーは画面全体なので座標変換の影響を受けないように注意が必要だが
-            // ここでは簡易的に「プレイヤーの前方に描画」とする
+        else if(b.type === 'omega') {
             ctx.fillStyle = `rgba(255, 0, 255, ${b.life/30})`;
-            // 画面を覆う矩形を描画したいが、translateされているので camX, camY を使う
             ctx.fillRect(camX, camY, canvas.width, canvas.height); 
-            // ビーム中心
             ctx.fillStyle = '#fff'; ctx.fillRect(camX, b.y - 50, canvas.width, 100);
+            return;
         }
         else if(b.type === 'void') {
-            // 収縮する円のエフェクト
-            let progress = 1.0 - (b.life / b.maxLife); // 0 -> 1
-            ctx.strokeStyle = b.color;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            // 予兆範囲（だんだん小さくなる = 力が収束するイメージ）
-            let r = b.size * (1.5 - progress * 0.5); 
-            ctx.arc(b.x, b.y, r, 0, Math.PI*2);
-            ctx.stroke();
-            
-            // 中心のコア（だんだん大きくなる）
-            ctx.fillStyle = b.color;
-            ctx.globalAlpha = 0.5 * progress;
-            ctx.beginPath();
-            ctx.arc(b.x, b.y, b.size * 0.5 * progress, 0, Math.PI*2);
-            ctx.fill();
+            let progress = 1.0 - (b.life / b.maxLife); 
+            ctx.strokeStyle = b.color; ctx.lineWidth = 3;
+            ctx.beginPath(); let r = b.size * (1.5 - progress * 0.5); ctx.arc(b.x, b.y, r, 0, Math.PI*2); ctx.stroke();
+            ctx.fillStyle = b.color; ctx.globalAlpha = 0.5 * progress;
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.size * 0.5 * progress, 0, Math.PI*2); ctx.fill();
             ctx.globalAlpha = 1.0;
+            return;
         }
         else if(b.type === 'missile') {
             ctx.fillStyle = '#f80'; ctx.beginPath(); ctx.moveTo(b.x, b.y-8); ctx.lineTo(b.x+6, b.y+6); ctx.lineTo(b.x-6, b.y+6); ctx.fill();
@@ -675,43 +657,49 @@ function draw() {
     ctx.fillStyle = '#fff'; 
     enemyBullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
 
-    // 敵
+    // 敵の描画
     enemies.forEach(e => {
-        // (画面内にあるかどうかの簡易カリングを入れると描画負荷が減りますが、今回は全描画でもOK)
         ctx.fillStyle = e.frozen > 0 ? '#0ff' : (e.flash > 0 ? '#fff' : e.color); 
         ctx.beginPath();
         if(e.type === 'boss') {
-            // ★変更: 四角形の描画をやめて、専用関数を呼び出す
             drawBossSprite(ctx, e);
 
             // ボスのHPバー
-            const barWidth = 120;  // バーの固定幅（ピクセル）
-            const barHeight = 10;  // バーの高さ
-            const barX = e.x - barWidth / 2;    // 中央揃え位置計算
-            const barY = e.y - e.size - 25;     // ボスの頭上に配置
-
-            // 比率計算
-            // Math.min(1, ...) を使うことで、HPがMaxHPを超えても100%以上描画されないようにする
-            let hpRatio = e.hp / e.maxHp;
-            hpRatio = Math.max(0, Math.min(1, hpRatio)); 
-
-            // 1. 背景（枠・減った部分）を描画（暗い赤）
-            ctx.fillStyle = '#400'; 
-            ctx.fillRect(barX, barY, barWidth, barHeight);
-
-            // 2. 現在HP（緑）を描画
-            // width に hpRatio を掛けることで、内部の値だけ伸縮させる
-            ctx.fillStyle = '#0f0'; 
-            ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
-
-            // 3. 枠線を描画（白）して見やすくする
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(barX, barY, barWidth, barHeight);
+            const barWidth = 120;  const barHeight = 10;
+            const barX = e.x - barWidth / 2; const barY = e.y - e.size - 25;
+            let hpRatio = e.hp / e.maxHp; hpRatio = Math.max(0, Math.min(1, hpRatio)); 
+            ctx.fillStyle = '#400'; ctx.fillRect(barX, barY, barWidth, barHeight);
+            ctx.fillStyle = '#0f0'; ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(barX, barY, barWidth, barHeight);
         } else if(e.type === 'golem') {
             ctx.fillRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
             ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(e.x-e.size, e.y-e.size, e.size*2, e.size*2);
-        } else {
+        } 
+        
+        // ★追加: アステロイド (drift AI) の描画
+        else if(e.ai === 'drift') {
+            ctx.save();
+            ctx.translate(e.x, e.y);
+            ctx.rotate(e.rotation || 0);
+            
+            ctx.beginPath();
+            let sides = 7;
+            for(let i=0; i<sides; i++) {
+                let ang = (Math.PI*2/sides) * i;
+                let r = e.size * (0.8 + Math.sin(i*132)*0.2); 
+                ctx.lineTo(Math.cos(ang)*r, Math.sin(ang)*r);
+            }
+            ctx.closePath();
+            ctx.fillStyle = e.color; // color is inherited
+            ctx.fill();
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        else {
             if(e.ai === 'dasher') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y+e.size); ctx.lineTo(e.x-e.size, e.y+e.size); ctx.closePath(); }
             else if(e.ai === 'splitter') { ctx.rect(e.x-e.size, e.y-e.size, e.size*2, e.size*2); }
             else if(e.ai === 'bat') { ctx.moveTo(e.x, e.y-e.size); ctx.lineTo(e.x+e.size, e.y); ctx.lineTo(e.x, e.y+e.size); ctx.lineTo(e.x-e.size, e.y); ctx.closePath(); }
@@ -740,15 +728,14 @@ function draw() {
         }
     });
 
-    // ダメージテキスト (これもワールド座標に追従させます)
+    // ダメージテキスト
     ctx.font = 'bold 16px sans-serif';
     texts.forEach(t => { ctx.fillStyle = t.color || 'white'; ctx.fillText(t.str, t.x, t.y); });
 
-    // --- カメラの座標変換を解除 (ここまでが動く世界) ---
+    // --- カメラの座標変換を解除 ---
     ctx.restore();
 
-    // --- 画面固定のUI (ビネット効果など) ---
-    // 画面の端を暗くする効果はカメラに関係なく画面全体にかける
+    // --- 画面固定のUI (ビネット効果) ---
     let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 100, canvas.width/2, canvas.height/2, 800);
     grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.6)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
