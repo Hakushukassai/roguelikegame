@@ -35,6 +35,9 @@ function update(ts) {
 
     // 7. アイテム・演出 (オーブ・テキスト・パーティクル)
     updateObjects(ts);
+
+    // 8. 環境ギミック更新
+    updateNebulas(ts);
 }
 
 // --- Sub Functions ---
@@ -102,8 +105,9 @@ function updatePlayer(ts) {
     if(dx!==0 || dy!==0) {
         let len = Math.hypot(dx, dy);
         if(len > 1) { dx/=len; dy/=len; }
-        player.x += dx * stats.spd * ts;
-        player.y += dy * stats.spd * ts;
+        let speedMod = isInNebula(player.x, player.y) ? 0.5 : 1.0;
+        player.x += dx * stats.spd * speedMod * ts;
+        player.y += dy * stats.spd * speedMod * ts;
         stats.isStationary = false;
         player.isMoving = true;
         
@@ -637,37 +641,51 @@ function updateProjectiles(ts) {
 }
 
 function updateEnemies(ts, gameTimeSec) {
-    // スポーン
+    // ----------------------------------------------------
+    // 1. スポーン処理 (アステロイド追加)
+    // ----------------------------------------------------
     if(enemies.length < MAX_ENEMIES) {
         let spawnDenom = Math.max(5, 25 - (level * 0.6)); 
         let hordeMult = (level >= 5 ? 2.0 + Math.min(1.0, (level - 5) / 25) : 1.0) * (singularityMode ? 3.0 : 1.0);
         
-        // 【改善】ダイナミックスポーンレート
-        // 敵が少ない（＝瞬殺している）時ほど、次が湧きやすくなる
-        let currentCountRatio = enemies.length / MAX_ENEMIES; // 0.0(いない) ~ 1.0(満員)
-        if(currentCountRatio < 0.2) hordeMult *= 3.0; // 敵が少なければ3倍湧く
+        let currentCountRatio = enemies.length / MAX_ENEMIES;
+        if(currentCountRatio < 0.2) hordeMult *= 3.0;
         else if(currentCountRatio < 0.5) hordeMult *= 1.5;
 
         let spawnProb = (hordeMult / spawnDenom) * ts;
         
-        // HP満タン時のスポーン倍率も少しマイルドにしつつ維持
         if(level >= 5 && player.hp >= player.maxHp * 0.9) spawnProb *= 2.0;
 
-        if(Math.random() < spawnProb) spawnEnemy('random', gameTimeSec);
+        // ★ここを変更: 確率でアステロイドを混ぜる
+        if(Math.random() < spawnProb) {
+            // 2%の確率で岩、それ以外はいつもの敵
+            if(Math.random() < 0.02) {
+                spawnEnemy('asteroid', gameTimeSec);
+            } else {
+                spawnEnemy('random', gameTimeSec);
+            }
+        }
     }
 
-    // ボス警告
+    // ボス警告処理 (ここは変更なし)
     let cycleTime = gameTimeSec % 300; 
     let cycleWave = Math.floor(gameTimeSec / 300);
     if(cycleTime > 295 && !bossWarningActive && cycleWave === bossCycleCounter) { bossWarningActive = true; triggerWarning(); }
     if(cycleWave > bossCycleCounter) { bossCycleCounter = cycleWave; bossWarningActive = false; document.getElementById('warning-overlay').style.display = 'none'; spawnEnemy('boss', gameTimeSec); }
 
-    // AI更新
+    // ----------------------------------------------------
+    // 2. AI更新 (星雲による減速と新AI追加)
+    // ----------------------------------------------------
     enemies.forEach(e => {
         if(e.dead) return;
+        
+        // ★追加: 星雲内にいるかチェックし、速度倍率を決める
+        // 星雲内なら速度0.4倍、通常は1.0倍
+        let envSpeedMod = (typeof isInNebula === 'function' && isInNebula(e.x, e.y)) ? 0.4 : 1.0;
+
         if(e.ai === 'iron' || e.type === 'boss') {
-            e.frozen = 0;          // 凍結(停止)しない
-            e.knockbackTimer = 0;  // ノックバック状態にならない
+            e.frozen = 0;          
+            e.knockbackTimer = 0;  
         }
         if(e.knockbackTimer > 0) e.knockbackTimer -= ts;
         if(e.frozen > 0) { e.frozen -= ts; if(Math.random()<0.1 && particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#88ffff', 1, 1); }
@@ -676,98 +694,108 @@ function updateEnemies(ts, gameTimeSec) {
             let angle = Math.atan2(player.y - e.y, player.x - e.x);
             if (e.flash > 0) e.flash -= ts;
             
-            if(e.ai === 'dasher') {
+            // --- AI分岐開始 ---
+
+            // ★追加: アステロイド用AI (drift)
+            if(e.ai === 'drift') {
+                // 進行方向が決まってなければランダムに決める
+                if(typeof e.driftAngle === 'undefined') e.driftAngle = Math.random() * Math.PI * 2;
+                
+                // プレイヤーから離れすぎたら(1000px以上)、プレイヤーの方へ向き直す
+                if(dist > 1000) e.driftAngle = angle; 
+                
+                // ゆらゆら移動 (envSpeedMod を適用)
+                e.x += Math.cos(e.driftAngle) * e.speed * envSpeedMod * ts;
+                e.y += Math.sin(e.driftAngle) * e.speed * envSpeedMod * ts;
+                
+                // ゆっくり回転させる演出用
+                e.rotation = (e.rotation || 0) + 0.01 * ts;
+            }
+
+            else if(e.ai === 'dasher') {
                 if(!e.state) e.state = 'chase';
-                if(e.state === 'chase') { e.x += Math.cos(angle)*e.speed*ts; e.y += Math.sin(angle)*e.speed*ts; if(dist < 250) { e.state = 'aim'; e.timer = 30; } }
+                // ★修正: 移動速度に envSpeedMod を掛ける
+                if(e.state === 'chase') { 
+                    e.x += Math.cos(angle) * e.speed * envSpeedMod * ts; 
+                    e.y += Math.sin(angle) * e.speed * envSpeedMod * ts; 
+                    if(dist < 250) { e.state = 'aim'; e.timer = 30; } 
+                }
                 else if(e.state === 'aim') { e.timer -= ts; if(e.timer <= 0) { e.state = 'dash'; e.timer = 30; e.vx = Math.cos(angle) * 14; e.vy = Math.sin(angle) * 14; } }
                 else if(e.state === 'dash') { e.x += e.vx * ts; e.y += e.vy * ts; e.timer -= ts; if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 50; } }
-                else if(e.state === 'cooldown') { e.timer -= ts; e.x += Math.cos(angle)*(e.speed*0.2)*ts; e.y += Math.sin(angle)*(e.speed*0.2)*ts; if(e.timer <= 0) e.state = 'chase'; }
+                else if(e.state === 'cooldown') { e.timer -= ts; e.x += Math.cos(angle)*(e.speed*0.2)*envSpeedMod*ts; e.y += Math.sin(angle)*(e.speed*0.2)*envSpeedMod*ts; if(e.timer <= 0) e.state = 'chase'; }
 
             } else if(e.ai === 'shooter') {
-                if(dist > 250) { e.x += Math.cos(angle)*e.speed*ts; e.y += Math.sin(angle)*e.speed*ts; }
-                else if(dist < 150) { e.x -= Math.cos(angle)*e.speed*0.5*ts; e.y -= Math.sin(angle)*e.speed*0.5*ts; }
+                // ★修正: 移動速度に envSpeedMod を掛ける
+                if(dist > 250) { e.x += Math.cos(angle)*e.speed*envSpeedMod*ts; e.y += Math.sin(angle)*e.speed*envSpeedMod*ts; }
+                else if(dist < 150) { e.x -= Math.cos(angle)*e.speed*0.5*envSpeedMod*ts; e.y -= Math.sin(angle)*e.speed*0.5*envSpeedMod*ts; }
                 if(Math.random() < (1/120)*ts && dist < 600) { enemyBullets.push({x: e.x, y: e.y, vx: Math.cos(angle)*6, vy: Math.sin(angle)*6, size: 6, color: '#f0a'}); }
 
             } else if(e.ai === 'bat') {
-                let zig = Math.sin(gameTimeSec * 5) * 0.8; e.x += Math.cos(angle + zig) * e.speed * ts; e.y += Math.sin(angle + zig) * e.speed * ts;
+                // ★修正: 移動速度に envSpeedMod を掛ける
+                let zig = Math.sin(gameTimeSec * 5) * 0.8; 
+                e.x += Math.cos(angle + zig) * e.speed * envSpeedMod * ts; 
+                e.y += Math.sin(angle + zig) * e.speed * envSpeedMod * ts;
 
             } else if(e.type === 'boss') {
-                // 初期化: 状態がない場合は 'chase' に設定
+                // 初期化
                 if(!e.state) { e.state = 'chase'; e.timer = 180; e.attackCount = 0; }
                 e.timer -= ts;
 
                 if(e.state === 'chase') {
-                    // 通常移動（プレイヤーを追尾）
-                    e.x += Math.cos(angle) * e.speed * ts;
-                    e.y += Math.sin(angle) * e.speed * ts;
+                    // ★修正: ボスも星雲で遅くなるようにする (envSpeedMod)
+                    e.x += Math.cos(angle) * e.speed * envSpeedMod * ts;
+                    e.y += Math.sin(angle) * e.speed * envSpeedMod * ts;
                     
-                    // 時間経過で攻撃パターンへ移行
                     if(e.timer <= 0) {
                         e.attackCount++;
-                        // ランダムで「突進」か「弾幕」を選択
-                        // HPが減ると弾幕頻度アップ
                         let actRand = Math.random();
-                        if(actRand < 0.5) {
-                            e.state = 'charge_warn'; e.timer = 60; // 突進予兆
-                            Sound.play('alert'); 
-                        } else {
-                            e.state = 'barrage'; e.timer = 120; e.subTimer = 0; // 弾幕開始
-                        }
+                        if(actRand < 0.5) { e.state = 'charge_warn'; e.timer = 60; Sound.play('alert'); } 
+                        else { e.state = 'barrage'; e.timer = 120; e.subTimer = 0; }
                     }
                 } 
                 else if(e.state === 'charge_warn') {
-                    // 突進予兆: その場で震える
-                    e.x += (Math.random()-0.5) * 5; e.y += (Math.random()-0.5) * 5;
-                    e.flash = 2; // 点滅させる
-                    
+                    e.x += (Math.random()-0.5) * 5; e.y += (Math.random()-0.5) * 5; e.flash = 2; 
                     if(e.timer <= 0) {
                         e.state = 'charge_go'; e.timer = 40; 
-                        // 突進方向を確定
-                        e.vx = Math.cos(angle) * (e.speed * 4.0); // 通常の4倍速
+                        e.vx = Math.cos(angle) * (e.speed * 4.0); 
                         e.vy = Math.sin(angle) * (e.speed * 4.0);
                         Sound.play('dash');
                     }
                 }
                 else if(e.state === 'charge_go') {
-                    // 突進実行
                     e.x += e.vx * ts; e.y += e.vy * ts;
-                    // 通り過ぎた場所にパーティクルを残す
                     if(Math.random() < 0.5) createParticles(e.x, e.y, e.color, 1, 3);
-                    
                     if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 60; }
                 }
                 else if(e.state === 'barrage') {
-                    // 回転弾幕攻撃
                     e.subTimer -= ts;
                     if(e.subTimer <= 0) {
-                        e.subTimer = 5; // 発射間隔
-                        let shotAngle = (e.timer * 0.2) + Math.sin(e.timer * 0.1); // スパイラル計算
-                        
-                        // 3方向発射
+                        e.subTimer = 5; 
+                        let shotAngle = (e.timer * 0.2) + Math.sin(e.timer * 0.1); 
                         for(let k=0; k<3; k++) {
                             let a = shotAngle + (Math.PI*2/3)*k;
-                            enemyBullets.push({
-                                x: e.x, y: e.y, 
-                                vx: Math.cos(a)*5, vy: Math.sin(a)*5, 
-                                size: 8, color: '#f0f'
-                            });
+                            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a)*5, vy: Math.sin(a)*5, size: 8, color: '#f0f' });
                         }
                         Sound.play('shoot', 0.5);
                     }
                     if(e.timer <= 0) { e.state = 'cooldown'; e.timer = 60; }
                 }
                 else if(e.state === 'cooldown') {
-                    // 攻撃後の硬直（少しゆっくり移動）
-                    e.x += Math.cos(angle) * (e.speed * 0.3) * ts;
-                    e.y += Math.sin(angle) * (e.speed * 0.3) * ts;
-                    
+                    // ★修正: クールダウン移動も遅くする
+                    e.x += Math.cos(angle) * (e.speed * 0.3) * envSpeedMod * ts;
+                    e.y += Math.sin(angle) * (e.speed * 0.3) * envSpeedMod * ts;
                     if(e.timer <= 0) { e.state = 'chase'; e.timer = 120 + Math.random()*60; }
                 }
             } else {
-                e.x += Math.cos(angle) * e.speed * ts; e.y += Math.sin(angle) * e.speed * ts;
+                // その他(normal, tank等)
+                // ★修正: 移動速度に envSpeedMod を掛ける
+                e.x += Math.cos(angle) * e.speed * envSpeedMod * ts; 
+                e.y += Math.sin(angle) * e.speed * envSpeedMod * ts;
             }
 
-            // プレイヤーとの衝突
+            // ----------------------------------------------------
+            // 3. プレイヤーとの衝突判定 (変更なし)
+            // ----------------------------------------------------
             if(dist < player.size + e.size) {
                 if(stats.spikeArmor && Math.random() < 0.2 * ts) { damageEnemy(e, stats.dmg * 0.5); if(particles.length < MAX_PARTICLES) createParticles((player.x+e.x)/2, (player.y+e.y)/2, '#fff', 1, 2); }
                 if(stats.spikeReflect) { damageEnemy(e, (e.dmg * 2.0) + (stats.armor * 50)); Sound.play('hit'); if(particles.length < MAX_PARTICLES) createParticles(e.x, e.y, '#0f0', 3, 2); }
@@ -817,6 +845,37 @@ function updateObjects(ts) {
     // テキスト
     if(texts.length > MAX_TEXTS) texts.splice(0, texts.length - MAX_TEXTS);
     for(let i=texts.length-1; i>=0; i--) { texts[i].y -= 1 * ts; texts[i].life -= ts; if(texts[i].life<=0) texts.splice(i, 1); }
+}
+
+function updateNebulas(ts) {
+    // スポーン (上限5個)
+    if(nebulas.length < 5 && Math.random() < 0.005 * ts) {
+        let dist = Math.max(canvas.width, canvas.height)/2 + 200;
+        let ang = Math.random() * Math.PI * 2;
+        nebulas.push({
+            x: player.x + Math.cos(ang) * dist,
+            y: player.y + Math.sin(ang) * dist,
+            r: 150 + Math.random() * 100, // 半径
+            color: Math.random() < 0.5 ? 'rgba(100, 0, 200, 0.3)' : 'rgba(0, 100, 200, 0.3)' // 紫か青
+        });
+    }
+
+    // 更新と削除
+    for(let i = nebulas.length - 1; i >= 0; i--) {
+        let n = nebulas[i];
+        // プレイヤーから離れすぎたら消す
+        if(Math.hypot(n.x - player.x, n.y - player.y) > 2000) {
+            nebulas.splice(i, 1);
+        }
+    }
+}
+
+// ヘルパー: 指定座標が星雲の中か判定
+function isInNebula(x, y) {
+    for(let n of nebulas) {
+        if((x - n.x)**2 + (y - n.y)**2 < n.r * n.r) return true;
+    }
+    return false;
 }
 
 function triggerBomb() {
